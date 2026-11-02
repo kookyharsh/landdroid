@@ -28,6 +28,11 @@ let planetMarkers = [];
 let universeRef = null;
 let resumeCallback = null;
 
+// Clean SVGs from assets/ (currentColor)
+const SVG_LOCATION = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M18.75 3.94L4.07 10.08c-.83.35-.81 1.53.02 1.85L9.43 14c.26.1.47.31.57.57l2.06 5.33c.32.84 1.51.86 1.86.03l6.15-14.67c.33-.83-.5-1.66-1.32-1.32z"/></svg>`;
+const SVG_PLACE    = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><g><rect fill="none" height="24" width="24"/></g><g><path d="M12 2c-4.2 0-8 3.22-8 8.2 0 3.18 2.45 6.92 7.34 11.23.38.33.95.33 1.33 0C17.55 17.12 20 13.38 20 10.2 20 5.22 16.2 2 12 2zm0 10c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></g></svg>`;
+const SVG_ROCKET   = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><g><rect fill="none" height="24" width="24"/><rect fill="none" height="24" width="24"/></g><g><path d="M11.41,2.87c0.35-0.26,0.82-0.26,1.18,0C13.81,3.75,16.5,6.46,16.5,13c0,2.16-0.78,4.76-1.36,6.35 C15,19.74,14.63,20,14.21,20l-4.41,0c-0.42,0-0.8-0.26-0.94-0.65C8.28,17.76,7.5,15.16,7.5,13C7.5,6.46,10.19,3.75,11.41,2.87z M14,11c0-1.1-0.9-2-2-2s-2,0.9-2,2s0.9,2,2,2S14,12.1,14,11z M7.69,20.52c-0.48-1.23-1.52-4.17-1.67-6.87l-1.13,0.75 C4.33,14.78,4,15.4,4,16.07v4.45c0,0.71,0.71,1.19,1.37,0.93L7.69,20.52z M20,20.52v-4.45c0-0.67-0.33-1.29-0.89-1.66l-1.13-0.75 c-0.15,2.69-1.2,5.64-1.67,6.87l2.32,0.93C19.29,21.71,20,21.23,20,20.52z"/></g></svg>`;
+
 /**
  * Format large number coordinates with sign and padded formatting
  */
@@ -80,15 +85,13 @@ export function updateVisibleOrbits() {
     const bounds = map.getBounds();
     const zoom = map.getZoom();
     const center = { x: 0, y: 0 };
-    // At zoom >= -3, circles have massive projected radii.
-    // Use solid line to avoid generating hundreds of thousands of dashed segments.
     const isHighZoom = (zoom >= -3);
 
     // 1. Universe boundary circle (R = 200,000)
     if (circleIntersectsBounds(center, UNIVERSE_RANGE, 20, bounds)) {
         L.circle([0, 0], {
             radius: UNIVERSE_RANGE,
-            color: '#FF4466',
+            color: '#800000',
             weight: 1.5,
             dashArray: isHighZoom ? null : '8, 12',
             fill: false,
@@ -101,7 +104,7 @@ export function updateVisibleOrbits() {
         if (circleIntersectsBounds(center, planet.orbitRadius, 10, bounds)) {
             L.circle([0, 0], {
                 radius: planet.orbitRadius,
-                color: '#343852',
+                color: '#292936',
                 weight: 1,
                 dashArray: isHighZoom ? null : '4, 10',
                 fill: false,
@@ -161,7 +164,6 @@ function createSpaceGridLayer(L) {
                 ctx.lineTo(pt.x, tileSize.y);
                 ctx.stroke();
 
-                // Axis label
                 if (isMajor && pt.x >= 2 && pt.x <= tileSize.x - 40) {
                     ctx.fillStyle = 'rgba(183, 183, 255, 0.35)';
                     ctx.font = '9px monospace';
@@ -233,13 +235,11 @@ export function initUniverseMap(universe, onResumeCockpit) {
     const mapContainer = document.getElementById('leaflet-map');
     if (!mapContainer) return;
 
-    // Destroy existing instance if any
     if (map) {
         map.remove();
         map = null;
     }
 
-    // Configure CRS.Simple bounds
     const maxBoundCoord = UNIVERSE_RANGE * 1.15;
     const universeBounds = L.latLngBounds(
         [-maxBoundCoord, -maxBoundCoord],
@@ -248,7 +248,7 @@ export function initUniverseMap(universe, onResumeCockpit) {
 
     map = L.map('leaflet-map', {
         crs: L.CRS.Simple,
-        preferCanvas: true, // Hardware-accelerated canvas renderer for vector paths
+        preferCanvas: true,
         minZoom: -9,
         maxZoom: 2,
         zoomSnap: 0.25,
@@ -259,18 +259,14 @@ export function initUniverseMap(universe, onResumeCockpit) {
         wheelPxPerZoomLevel: 90
     });
 
-    // Add deep space grid tile layer
     gridLayer = createSpaceGridLayer(L);
     gridLayer.addTo(map);
 
-    // Layer groups for clean management
     orbitLayerGroup = L.layerGroup().addTo(map);
     markerLayerGroup = L.layerGroup().addTo(map);
 
-    // Hook movement and zoom events to dynamically update visible orbits with culling
     map.on('moveend zoomend viewreset', updateVisibleOrbits);
 
-    // Mousemove coordinate tracking in HUD header
     const coordDisplay = document.getElementById('map-coords-readout');
     map.on('mousemove', (e) => {
         if (coordDisplay) {
@@ -297,27 +293,23 @@ export function renderUniverseEntities() {
     markerLayerGroup.clearLayers();
     planetMarkers = [];
 
-    // 1. Draw only the orbits and boundary rings that intersect the current viewport
+    // 1. Draw only orbits and boundary rings that intersect viewport
     updateVisibleOrbits();
 
-    // 2. Central Star Marker
+    // 2. Central Star Marker (Flat disc matching game aesthetic)
     const star = universeRef.star;
     const starIcon = L.divIcon({
         className: 'star-map-icon',
-        html: `
-            <div class="star-glow" style="--star-color: ${star.color};">
-                <div class="star-core"></div>
-            </div>
-        `,
-        iconSize: [36, 36],
-        iconAnchor: [18, 18]
+        html: `<div class="star-disc" style="--star-color: ${star.color};"></div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
     });
 
     starMarker = L.marker([0, 0], { icon: starIcon }).addTo(markerLayerGroup);
-    starMarker.bindTooltip(`☀️ <b>${star.name}</b> [Class ${star.cls}]`, {
+    starMarker.bindTooltip(`STAR: <b>${star.name}</b> [Class ${star.cls}]`, {
         direction: 'top',
         className: 'celestial-tooltip',
-        offset: [0, -18]
+        offset: [0, -14]
     });
 
     const starPopupContent = `
@@ -334,11 +326,11 @@ export function renderUniverseEntities() {
                 <div class="grid-item full"><span class="k">COORDINATES</span><span class="v">&lt;0, 0&gt; (Origin)</span></div>
             </div>
             <div class="popup-actions">
-                <button class="popup-btn" id="btn-zoom-star">🎯 CENTER ON STAR</button>
+                <button class="popup-btn hud-btn" id="btn-zoom-star">${SVG_LOCATION} CENTER ON STAR</button>
             </div>
         </div>
     `;
-    starMarker.bindPopup(starPopupContent, { className: 'sci-fi-popup' });
+    starMarker.bindPopup(starPopupContent);
     starMarker.on('popupopen', () => {
         const btn = document.getElementById('btn-zoom-star');
         if (btn) btn.onclick = () => map.flyTo([0, 0], -4, { duration: 1.2 });
@@ -348,15 +340,13 @@ export function renderUniverseEntities() {
     universeRef.planets.forEach((planet, idx) => {
         const isExplored = planet.explored;
         const color = planet.color || '#FFFFFF';
-        const displayRadius = Math.max(12, Math.min(30, Math.round(planet.radius / 80)));
+        const displayRadius = Math.max(12, Math.min(28, Math.round(planet.radius / 80)));
 
         const planetIcon = L.divIcon({
             className: 'planet-map-icon',
             html: `
                 <div class="planet-marker-body ${isExplored ? 'surveyed' : ''}"
                      style="--planet-color: ${color}; width: ${displayRadius}px; height: ${displayRadius}px;">
-                    <div class="planet-inner"></div>
-                    <div class="planet-ring-marker"></div>
                 </div>
                 <span class="planet-label">${planet.name}</span>
             `,
@@ -365,7 +355,7 @@ export function renderUniverseEntities() {
         });
 
         const pMarker = L.marker([planet.pos.y, planet.pos.x], { icon: planetIcon }).addTo(markerLayerGroup);
-        pMarker.bindTooltip(`🪐 <b>${planet.name}</b> ${isExplored ? '✓ SURVEYED' : '?' }`, {
+        pMarker.bindTooltip(`BODY: <b>${planet.name}</b> [${isExplored ? 'SURVEYED' : 'UNEXPLORED'}]`, {
             direction: 'top',
             className: 'celestial-tooltip',
             offset: [0, -displayRadius / 2 - 4]
@@ -375,7 +365,7 @@ export function renderUniverseEntities() {
             <div class="celestial-popup planet-popup">
                 <div class="popup-header">
                     <span class="popup-tag ${isExplored ? 'tag-surveyed' : 'tag-unexplored'}">
-                        ${isExplored ? '✓ SURVEYED' : '◯ UNEXPLORED'}
+                        ${isExplored ? '[SURVEYED]' : '[UNEXPLORED]'}
                     </span>
                     <span class="popup-title">${planet.name}</span>
                 </div>
@@ -391,11 +381,11 @@ export function renderUniverseEntities() {
                     <div class="grid-item full"><span class="k">COORDINATES</span><span class="v">&lt;${fmtCoord(planet.pos.x)}, ${fmtCoord(planet.pos.y)}&gt;</span></div>
                 </div>
                 <div class="popup-actions">
-                    <button class="popup-btn" id="btn-zoom-p-${idx}">🎯 TARGET & ZOOM IN</button>
+                    <button class="popup-btn hud-btn" id="btn-zoom-p-${idx}">${SVG_PLACE} TARGET & ZOOM IN</button>
                 </div>
             </div>
         `;
-        pMarker.bindPopup(planetPopupContent, { className: 'sci-fi-popup' });
+        pMarker.bindPopup(planetPopupContent);
         pMarker.on('popupopen', () => {
             const btn = document.getElementById(`btn-zoom-p-${idx}`);
             if (btn) btn.onclick = () => map.flyTo([planet.pos.y, planet.pos.x], -3, { duration: 1.2 });
@@ -408,36 +398,35 @@ export function renderUniverseEntities() {
     if (universeRef.track && universeRef.track.length > 1) {
         const trackLatLngs = universeRef.track.map(v => [v.y, v.x]);
         trackPolyline = L.polyline(trackLatLngs, {
-            color: '#00E5FF',
-            weight: 2,
-            opacity: 0.65,
+            color: '#34A853',
+            weight: 1.5,
+            opacity: 0.7,
             dashArray: '3, 6'
         }).addTo(markerLayerGroup);
     }
 
-    // 5. Spacecraft Marker
+    // 5. Spacecraft Marker (Flat rocket SVG rotated to ship heading)
     const ship = universeRef.ship;
-    const shipDeg = (ship.angle * 180 / Math.PI) + 90; // SVG points up
+    const shipDeg = (ship.angle * 180 / Math.PI) + 90;
     const shipIcon = L.divIcon({
         className: 'ship-map-icon',
         html: `
             <div class="ship-marker-wrapper">
-                <div class="ship-radar-ping"></div>
-                <svg class="ship-svg" viewBox="0 0 24 24" style="transform: rotate(${shipDeg}deg);">
-                    <polygon points="12,2 22,22 12,17 2,22" fill="#00FFFF" stroke="#FFFFFF" stroke-width="1.5" />
-                </svg>
+                <div style="transform: rotate(${shipDeg}deg); display: flex; align-items: center; justify-content: center;">
+                    ${SVG_ROCKET}
+                </div>
             </div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
     });
 
     shipMarker = L.marker([ship.pos.y, ship.pos.x], { icon: shipIcon, zIndexOffset: 1000 }).addTo(markerLayerGroup);
-    shipMarker.bindTooltip(`🚀 <b>SPACECRAFT</b> (YOU ARE HERE)`, {
+    shipMarker.bindTooltip(`SPACECRAFT (CURRENT POSITION)`, {
         direction: 'top',
         permanent: true,
         className: 'ship-tooltip',
-        offset: [0, -18]
+        offset: [0, -14]
     });
 
     const isLanded = !!ship.landing;
@@ -448,10 +437,10 @@ export function renderUniverseEntities() {
         <div class="celestial-popup ship-popup">
             <div class="popup-header">
                 <span class="popup-tag tag-ship">MISSION ACTIVE</span>
-                <span class="popup-title">SPACECRAFT COCKPIT</span>
+                <span class="popup-title">SPACECRAFT TELEMETRY</span>
             </div>
             <div class="popup-grid">
-                <div class="grid-item full"><span class="k">FLIGHT STATUS</span><span class="v highlight">${isLanded ? `LANDED ON ${ship.landing.planet.name.toUpperCase()}` : 'IN ORBIT / FLIGHT'}</span></div>
+                <div class="grid-item full"><span class="k">FLIGHT STATUS</span><span class="v">${isLanded ? `LANDED ON ${ship.landing.planet.name.toUpperCase()}` : 'IN ORBIT / FLIGHT'}</span></div>
                 <div class="grid-item"><span class="k">VELOCITY</span><span class="v">${Math.round(ship.velocity.mag())} m/s</span></div>
                 <div class="grid-item"><span class="k">CURRENT THRUST</span><span class="v">${Math.round(ship.thrust.mag() * 100)}%</span></div>
                 <div class="grid-item"><span class="k">NEAREST BODY</span><span class="v">${closest.name}</span></div>
@@ -459,17 +448,16 @@ export function renderUniverseEntities() {
                 <div class="grid-item full"><span class="k">CURRENT POSITION</span><span class="v">&lt;${fmtCoord(ship.pos.x)}, ${fmtCoord(ship.pos.y)}&gt;</span></div>
             </div>
             <div class="popup-actions">
-                <button class="popup-btn highlight-btn" id="btn-resume-from-ship">🚀 RETURN TO COCKPIT</button>
+                <button class="popup-btn hud-btn" id="btn-resume-from-ship">${SVG_ROCKET} RETURN TO COCKPIT</button>
             </div>
         </div>
     `;
-    shipMarker.bindPopup(shipPopupContent, { className: 'sci-fi-popup' });
+    shipMarker.bindPopup(shipPopupContent);
     shipMarker.on('popupopen', () => {
         const btn = document.getElementById('btn-resume-from-ship');
         if (btn && resumeCallback) btn.onclick = resumeCallback;
     });
 
-    // Populate quick-jump selector
     updatePlanetSelector();
 }
 
@@ -485,20 +473,20 @@ function updatePlanetSelector() {
     // Add Ship
     const shipOpt = document.createElement('option');
     shipOpt.value = 'ship';
-    shipOpt.textContent = '🚀 Spacecraft (Current Position)';
+    shipOpt.textContent = 'Spacecraft (Current Position)';
     selector.appendChild(shipOpt);
 
     // Add Star
     const starOpt = document.createElement('option');
     starOpt.value = 'star';
-    starOpt.textContent = `☀️ ${universeRef.star.name} (Primary Star)`;
+    starOpt.textContent = `Star: ${universeRef.star.name} (Primary Star)`;
     selector.appendChild(starOpt);
 
     // Add Planets
     universeRef.planets.forEach((planet, idx) => {
         const opt = document.createElement('option');
         opt.value = `planet-${idx}`;
-        opt.textContent = `🪐 ${planet.name} [${planet.explored ? 'Surveyed' : 'Unexplored'}]`;
+        opt.textContent = `Planet: ${planet.name} [${planet.explored ? 'Surveyed' : 'Unexplored'}]`;
         selector.appendChild(opt);
     });
 
