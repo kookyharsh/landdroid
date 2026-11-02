@@ -92,10 +92,17 @@ let stickActive = false;
 let stickOrigin = Vec2.Zero;
 let stickCurrent = Vec2.Zero;
 
-// ── Resize handler ────────────────────────────────────────────────────────────
+// ── Hi-DPI & Resize handler ───────────────────────────────────────────────────
+let dpr = window.devicePixelRatio || 1;
+
 function resize() {
-    canvas.width  = window.innerWidth;
-    canvas.height = window.innerHeight;
+    dpr = window.devicePixelRatio || 1;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
 }
 resize();
 window.addEventListener('resize', resize);
@@ -218,9 +225,12 @@ function capitalize(str) {
 }
 
 function fmtVec(v) {
-    const fx = v.x >= 0 ? `+${Math.round(v.x)}` : `${Math.round(v.x)}`;
-    const fy = v.y >= 0 ? `+${Math.round(v.y)}` : `${Math.round(v.y)}`;
-    return `(${fx}, ${fy})`;
+    const pad = (n) => {
+        const rounded = Math.round(n);
+        const sign = rounded >= 0 ? '+' : '-';
+        return `${sign}${Math.abs(rounded).toString().padStart(5, ' ')}`;
+    };
+    return `<${pad(v.x)}, ${pad(v.y)}>`;
 }
 
 // ── Draw grid (Spaaaace() in MainActivity.kt) ─────────────────────────────────
@@ -264,7 +274,7 @@ function drawFlightStickOverlay(ctx) {
     const a     = delta.angle();
 
     ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0); // screen space
+    // setTransform handled by caller with dpr
 
     ctx.beginPath();
     ctx.arc(stickOrigin.x, stickOrigin.y, r, 0, 2 * Math.PI);
@@ -301,7 +311,7 @@ function frame(timestamp) {
     universe.step(nanos);
 
     // ── Camera update (Spaaaace() in MainActivity.kt) ────────────────────────
-    const ship    = universe.ship;
+    const ship = universe.ship;
     const closest = universe.closestPlanet();
     const distToNearestSurf = Math.max(0, ship.pos.minus(closest.pos).mag() - closest.radius * 1.2);
 
@@ -315,20 +325,21 @@ function frame(timestamp) {
     const cameraOffset = (universe.follow ? universe.follow.pos : Vec2.Zero).times(-1);
 
     // ── Canvas clear ──────────────────────────────────────────────────────────
-    const W = canvas.width, H = canvas.height;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#16161D'; // Colors.Eigengrau
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // ── World-space transform ─────────────────────────────────────────────────
     // Camera: screen center = ship world pos
     // cameraZoom: world → screen pixels
-    const cx = W / 2;
-    const cy = H / 2;
+    const cx = w / 2;
+    const cy = h / 2;
 
     // Compute the visible world rectangle (mirrors visibleSpaceRectMeters in Spaaaace())
-    const halfW = (W / 2) / cameraZoom;
-    const halfH = (H / 2) / cameraZoom;
+    const halfW = (w / 2) / cameraZoom;
+    const halfH = (h / 2) / cameraZoom;
     const camCenter = cameraOffset.times(-1); // = ship.pos
     const visibleRect = {
         left:   camCenter.x - halfW,
@@ -337,11 +348,11 @@ function frame(timestamp) {
         bottom: camCenter.y + halfH,
     };
 
-    // Apply world transform: translate so ship is at canvas center
+    // Apply world transform scaled by devicePixelRatio for razor-sharp rendering
     ctx.setTransform(
-        cameraZoom, 0, 0, cameraZoom,
-        cx + cameraOffset.x * cameraZoom,
-        cy + cameraOffset.y * cameraZoom
+        cameraZoom * dpr, 0, 0, cameraZoom * dpr,
+        (cx + cameraOffset.x * cameraZoom) * dpr,
+        (cy + cameraOffset.y * cameraZoom) * dpr
     );
 
     // Draw grid in world space
@@ -350,8 +361,8 @@ function frame(timestamp) {
     // Draw all universe elements
     drawUniverse(ctx, universe, cameraZoom);
 
-    // ── Screen-space overlay ──────────────────────────────────────────────────
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // ── Screen-space overlay (flight stick) with DPI scaling ───────────────────
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawFlightStickOverlay(ctx);
 
     // ── HUD text (DOM elements) ───────────────────────────────────────────────

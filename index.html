@@ -31,7 +31,7 @@
             width: 100%; height: 100%;
             background: #16161D;
             overflow: hidden;
-            font-family: monospace;
+            font-family: 'SF Mono', 'Roboto Mono', 'Cascadia Code', 'Consolas', 'Menlo', monospace;
         }
 
         canvas {
@@ -54,46 +54,73 @@
             position: absolute;
             top: 6px; left: 6px;
             color: #B7B7FF;
-            font: 12px/12px monospace;
+            font-size: 12px;
+            line-height: 14px;
             letter-spacing: 1px;
             white-space: pre;
+            max-height: calc(100vh - 120px);
+            overflow-y: auto;
+            scrollbar-width: none;
+        }
+        #catalog::-webkit-scrollbar {
+            display: none;
         }
 
-        /* Bottom-left column: autopilot + telemetry stacked */
-        #bottom-left {
+        /* Bottom HUD container */
+        #hud-bottom {
             position: absolute;
-            bottom: 44px; left: 6px;
+            bottom: 6px;
+            left: 6px;
             display: flex;
             flex-direction: column;
             align-items: flex-start;
             gap: 4px;
+            pointer-events: none;
+        }
+
+        /* Responsive placement on wide desktop screens matching Android's Alignment.BottomEnd */
+        @media (min-aspect-ratio: 1/1) {
+            #hud-bottom {
+                left: auto;
+                right: 6px;
+                align-items: flex-end;
+            }
         }
 
         /* Autopilot status (above telemetry when engaged) */
         #autopilot-status {
             color: #4285F4;
-            font: 12px/12px monospace;
+            font-size: 12px;
+            line-height: 14px;
             letter-spacing: 1px;
             white-space: pre;
         }
 
-        /* Bottom-left: ship telemetry */
+        /* Telemetry row: telemetry text + AUTO button side-by-side */
+        #telemetry-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
         #telemetry {
             color: #B7B7FF;
-            font: 12px/12px monospace;
+            font-size: 12px;
+            line-height: 14px;
             letter-spacing: 1px;
             white-space: pre;
         }
-        /* Bottom-right: AUTO button */
+
+        /* AUTO button */
         #autoBtn {
-            position: absolute;
-            bottom: 6px; right: 6px;
-            pointer-events: auto;   /* button needs clicks */
+            pointer-events: auto;
             background: transparent;
-            border: 1.5px solid #B7B7FF;
+            border: 1px solid #B7B7FF;
             color: #B7B7FF;
-            font: 12px/12px monospace;
-            letter-spacing: 2px;
+            font-family: inherit;
+            font-size: 12px;
+            line-height: 12px;
+            letter-spacing: 1px;
             padding: 6px 10px;
             cursor: pointer;
             user-select: none;
@@ -111,7 +138,8 @@
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
             color: #B7B7FF;
-            font: 14px/1.5 monospace;
+            font-size: 14px;
+            line-height: 1.5;
             letter-spacing: 2px;
             text-align: center;
             pointer-events: none;
@@ -124,12 +152,14 @@
     <!-- HUD (DOM layer; catalog and telemetry use pre elements for monospace alignment) -->
     <div id="hud">
         <pre id="catalog"></pre>
-
-        <!-- autopilot text + telemetry in a bottom-left column -->
-        <div id="bottom-left">
+        <div id="hud-bottom">
             <pre id="autopilot-status"></pre>
-            <pre id="telemetry"></pre>
+            <div id="telemetry-row">
+                <pre id="telemetry"></pre>
+                <button id="autoBtn" title="Toggle autopilot">AUTO</button>
+            </div>
         </div>
+    </div>
 
         <button id="autoBtn" title="Toggle autopilot">AUTO</button>
     </div>
