@@ -38,6 +38,80 @@ function fmtCoord(n) {
 }
 
 /**
+ * Test whether a circle ring intersects the visible map bounding box.
+ * Returns false if bounds is entirely outside the circle OR entirely inside the empty hole.
+ */
+export function circleIntersectsBounds(center, radius, strokeWidth, bounds) {
+    if (!bounds) return true;
+    const minLng = Math.min(bounds.getWest(), bounds.getEast());
+    const maxLng = Math.max(bounds.getWest(), bounds.getEast());
+    const minLat = Math.min(bounds.getSouth(), bounds.getNorth());
+    const maxLat = Math.max(bounds.getSouth(), bounds.getNorth());
+
+    // 1. Closest point on bounds rect to circle center
+    const clampedX = Math.max(minLng, Math.min(maxLng, center.x));
+    const clampedY = Math.max(minLat, Math.min(maxLat, center.y));
+    const dxMin = clampedX - center.x;
+    const dyMin = clampedY - center.y;
+    const rOuter = radius + strokeWidth;
+    if (dxMin * dxMin + dyMin * dyMin > rOuter * rOuter) {
+        return false; // Bounds rect is entirely outside the circle
+    }
+
+    // 2. Farthest point on bounds rect to circle center (always one of the 4 corners)
+    const maxDx = Math.max(Math.abs(minLng - center.x), Math.abs(maxLng - center.x));
+    const maxDy = Math.max(Math.abs(minLat - center.y), Math.abs(maxLat - center.y));
+    const rInner = Math.max(0, radius - strokeWidth);
+    if (maxDx * maxDx + maxDy * maxDy < rInner * rInner) {
+        return false; // Bounds rect is entirely inside the hole of the ring
+    }
+
+    return true;
+}
+
+/**
+ * Dynamically updates orbit and boundary circles with viewport culling and dash clamping
+ */
+export function updateVisibleOrbits() {
+    if (!map || !map._loaded || !universeRef || !orbitLayerGroup) return;
+
+    orbitLayerGroup.clearLayers();
+
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+    const center = { x: 0, y: 0 };
+    // At zoom >= -3, circles have massive projected radii.
+    // Use solid line to avoid generating hundreds of thousands of dashed segments.
+    const isHighZoom = (zoom >= -3);
+
+    // 1. Universe boundary circle (R = 200,000)
+    if (circleIntersectsBounds(center, UNIVERSE_RANGE, 20, bounds)) {
+        L.circle([0, 0], {
+            radius: UNIVERSE_RANGE,
+            color: '#FF4466',
+            weight: 1.5,
+            dashArray: isHighZoom ? null : '8, 12',
+            fill: false,
+            interactive: false
+        }).addTo(orbitLayerGroup);
+    }
+
+    // 2. Planet orbits
+    for (const planet of universeRef.planets) {
+        if (circleIntersectsBounds(center, planet.orbitRadius, 10, bounds)) {
+            L.circle([0, 0], {
+                radius: planet.orbitRadius,
+                color: '#343852',
+                weight: 1,
+                dashArray: isHighZoom ? null : '4, 10',
+                fill: false,
+                interactive: false
+            }).addTo(orbitLayerGroup);
+        }
+    }
+}
+
+/**
  * Generate a procedural deep-space grid tile layer
  */
 function createSpaceGridLayer(L) {
@@ -139,8 +213,8 @@ function createSpaceGridLayer(L) {
         minZoom: -9,
         maxZoom: 2,
         tileSize: 256,
-        updateWhenIdle: false,
-        updateInterval: 100
+        updateWhenIdle: true,
+        keepBuffer: 3
     });
 }
 
@@ -174,6 +248,7 @@ export function initUniverseMap(universe, onResumeCockpit) {
 
     map = L.map('leaflet-map', {
         crs: L.CRS.Simple,
+        preferCanvas: true, // Hardware-accelerated canvas renderer for vector paths
         minZoom: -9,
         maxZoom: 2,
         zoomSnap: 0.25,
@@ -192,15 +267,8 @@ export function initUniverseMap(universe, onResumeCockpit) {
     orbitLayerGroup = L.layerGroup().addTo(map);
     markerLayerGroup = L.layerGroup().addTo(map);
 
-    // Universe boundary circle (dashed red perimeter at R = 200,000)
-    L.circle([0, 0], {
-        radius: UNIVERSE_RANGE,
-        color: '#FF4466',
-        weight: 1.5,
-        dashArray: '8, 12',
-        fill: false,
-        interactive: false
-    }).addTo(orbitLayerGroup);
+    // Hook movement and zoom events to dynamically update visible orbits with culling
+    map.on('moveend zoomend viewreset', updateVisibleOrbits);
 
     // Mousemove coordinate tracking in HUD header
     const coordDisplay = document.getElementById('map-coords-readout');
@@ -212,12 +280,12 @@ export function initUniverseMap(universe, onResumeCockpit) {
         }
     });
 
-    // Populate initial entities
-    renderUniverseEntities();
-
     // Default view: center on spacecraft
     const ship = universe.ship;
     map.setView([ship.pos.y, ship.pos.x], -7);
+
+    // Populate initial entities
+    renderUniverseEntities();
 }
 
 /**
@@ -226,33 +294,13 @@ export function initUniverseMap(universe, onResumeCockpit) {
 export function renderUniverseEntities() {
     if (!map || !universeRef) return;
 
-    orbitLayerGroup.clearLayers();
     markerLayerGroup.clearLayers();
     planetMarkers = [];
 
-    // 1. Redraw Universe boundary ring
-    L.circle([0, 0], {
-        radius: UNIVERSE_RANGE,
-        color: '#FF4466',
-        weight: 1.5,
-        dashArray: '8, 12',
-        fill: false,
-        interactive: false
-    }).addTo(orbitLayerGroup);
+    // 1. Draw only the orbits and boundary rings that intersect the current viewport
+    updateVisibleOrbits();
 
-    // 2. Orbits for each planet
-    for (const planet of universeRef.planets) {
-        L.circle([0, 0], {
-            radius: planet.orbitRadius,
-            color: '#343852',
-            weight: 1,
-            dashArray: '4, 10',
-            fill: false,
-            interactive: false
-        }).addTo(orbitLayerGroup);
-    }
-
-    // 3. Central Star Marker
+    // 2. Central Star Marker
     const star = universeRef.star;
     const starIcon = L.divIcon({
         className: 'star-map-icon',
@@ -296,7 +344,7 @@ export function renderUniverseEntities() {
         if (btn) btn.onclick = () => map.flyTo([0, 0], -4, { duration: 1.2 });
     });
 
-    // 4. Planet Markers
+    // 3. Planet Markers
     universeRef.planets.forEach((planet, idx) => {
         const isExplored = planet.explored;
         const color = planet.color || '#FFFFFF';
@@ -356,7 +404,7 @@ export function renderUniverseEntities() {
         planetMarkers.push(pMarker);
     });
 
-    // 5. Flight Track Trail (historical path)
+    // 4. Flight Track Trail (historical path)
     if (universeRef.track && universeRef.track.length > 1) {
         const trackLatLngs = universeRef.track.map(v => [v.y, v.x]);
         trackPolyline = L.polyline(trackLatLngs, {
@@ -367,7 +415,7 @@ export function renderUniverseEntities() {
         }).addTo(markerLayerGroup);
     }
 
-    // 6. Spacecraft Marker
+    // 5. Spacecraft Marker
     const ship = universeRef.ship;
     const shipDeg = (ship.angle * 180 / Math.PI) + 90; // SVG points up
     const shipIcon = L.divIcon({
@@ -495,6 +543,7 @@ export function showUniverseMap() {
                 if (universeRef && universeRef.ship) {
                     map.setView([universeRef.ship.pos.y, universeRef.ship.pos.x], map.getZoom());
                 }
+                updateVisibleOrbits();
             }
         }, 60);
     }
@@ -516,6 +565,7 @@ export function hideUniverseMap() {
 export function fitEntireUniverse() {
     if (!map) return;
     map.fitBounds([[-UNIVERSE_RANGE, -UNIVERSE_RANGE], [UNIVERSE_RANGE, UNIVERSE_RANGE]], { padding: [20, 20] });
+    setTimeout(() => updateVisibleOrbits(), 100);
 }
 
 function capitalize(str) {
