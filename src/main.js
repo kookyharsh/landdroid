@@ -76,6 +76,7 @@ const seed     = randomSeed();
 const namer    = new Namer();
 const universe = new Universe(namer, seed);
 universe.initRandom();
+window.universe = universe;
 
 // Set up autopilot
 const autopilot = new Autopilot(universe.ship, universe);
@@ -359,7 +360,7 @@ function frame(timestamp) {
     drawGrid(ctx, visibleRect, cameraZoom);
 
     // Draw all universe elements
-    drawUniverse(ctx, universe, cameraZoom);
+    drawUniverse(ctx, universe, cameraZoom, visibleRect);
 
     // ── Screen-space overlay (flight stick) with DPI scaling ───────────────────
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

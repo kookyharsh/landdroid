@@ -68,6 +68,33 @@ function withAlpha(colorStr, alpha) {
 // ── Main draw entry point ─────────────────────────────────────────────────────
 
 /**
+ * Test whether a stroked circle ring intersects an axis-aligned bounding box.
+ * Returns false if the rect is completely outside the circle OR completely inside the hole.
+ */
+export function circleIntersectsRect(center, radius, strokeWidth, rect) {
+    if (!rect) return true;
+    // Closest point on rect to center
+    const clampedX = Math.max(rect.left, Math.min(rect.right, center.x));
+    const clampedY = Math.max(rect.top, Math.min(rect.bottom, center.y));
+    const dxMin = clampedX - center.x;
+    const dyMin = clampedY - center.y;
+    const rOuter = radius + strokeWidth;
+    if (dxMin * dxMin + dyMin * dyMin > rOuter * rOuter) {
+        return false; // Rect is entirely outside the circle
+    }
+
+    // Farthest point on rect to center (always one of the 4 corners)
+    const maxDx = Math.max(Math.abs(rect.left - center.x), Math.abs(rect.right - center.x));
+    const maxDy = Math.max(Math.abs(rect.top - center.y), Math.abs(rect.bottom - center.y));
+    const rInner = Math.max(0, radius - strokeWidth);
+    if (maxDx * maxDx + maxDy * maxDy < rInner * rInner) {
+        return false; // Rect is entirely inside the hole of the ring
+    }
+
+    return true;
+}
+
+/**
  * Draw the complete universe. Called with canvas ctx already in world-space coordinates
  * (translated + scaled by camera). zoom is the current camera zoom factor.
  *
@@ -79,19 +106,19 @@ function withAlpha(colorStr, alpha) {
  *   5. Autopilot overlay
  *   6. Spacecraft (track first, then ship body)
  */
-export function drawUniverse(ctx, universe, zoom) {
+export function drawUniverse(ctx, universe, zoom, visibleRect = null) {
     // 1. Constraints: Landing flags and Container
     for (const c of universe.constraints) {
         if (c instanceof Landing) {
             drawLanding(ctx, c, zoom);
         } else {
             // Container (ringfence)
-            drawContainer(ctx, c, zoom);
+            drawContainer(ctx, c, zoom, visibleRect);
         }
     }
 
     // 2. Star
-    drawStar(ctx, universe.star, universe.now, zoom);
+    drawStar(ctx, universe.star, universe.now, zoom, visibleRect);
 
     // 3. Entities: Sparks and Planets (star is skipped)
     for (const entity of universe.entities) {
@@ -99,7 +126,7 @@ export function drawUniverse(ctx, universe, zoom) {
         if (entity instanceof Spark) {
             drawSpark(ctx, entity, zoom);
         } else if (entity instanceof Planet) {
-            drawPlanet(ctx, entity, universe, zoom);
+            drawPlanet(ctx, entity, universe, zoom, visibleRect);
         }
         // Spacecraft, Autopilot: drawn separately below
     }
@@ -115,7 +142,11 @@ export function drawUniverse(ctx, universe, zoom) {
 
 // ── drawContainer ─────────────────────────────────────────────────────────────
 // VisibleUniverse.kt: drawContainer()
-export function drawContainer(ctx, container, zoom) {
+export function drawContainer(ctx, container, zoom, visibleRect = null) {
+    if (visibleRect && !circleIntersectsRect(Vec2.Zero, container.radius, 1 / zoom, visibleRect)) {
+        return;
+    }
+
     ctx.save();
     ctx.beginPath();
     ctx.arc(0, 0, container.radius, 0, PI2f);
@@ -129,11 +160,14 @@ export function drawContainer(ctx, container, zoom) {
 
 // ── drawGravitationalField ────────────────────────────────────────────────────
 // VisibleUniverse.kt: drawGravitationalField()
-export function drawGravitationalField(ctx, planet, now, zoom) {
+export function drawGravitationalField(ctx, planet, now, zoom, visibleRect = null) {
     const rings = 10;
     for (let i = 0; i < rings; i++) {
         const force = lerp(2000, 0.01, (i - (now % 1)) / rings);
         const r     = Math.sqrt(GRAVITATION * planet.mass * SPACECRAFT_MASS / force);
+        if (visibleRect && !circleIntersectsRect(planet.pos, r, 2 / zoom, visibleRect)) {
+            continue;
+        }
         const alpha = lerp(0.75, 0.1, i / rings);
         ctx.beginPath();
         ctx.arc(planet.pos.x, planet.pos.y, r, 0, PI2f);
@@ -145,22 +179,24 @@ export function drawGravitationalField(ctx, planet, now, zoom) {
 
 // ── drawPlanet ────────────────────────────────────────────────────────────────
 // VisibleUniverse.kt: drawPlanet()
-export function drawPlanet(ctx, planet, universe, zoom) {
+export function drawPlanet(ctx, planet, universe, zoom, visibleRect = null) {
     const drawColor = planet.explored ? planet.color : Colors.Eigengrau4;
 
     // Orbit ring
     if (DRAW_ORBITS_FLAG) {
         const orbitR = planet.pos.distance(planet.orbitCenter);
-        ctx.beginPath();
-        ctx.arc(planet.orbitCenter.x, planet.orbitCenter.y, orbitR, 0, PI2f);
-        ctx.strokeStyle = Colors.Eigengrau3;
-        ctx.lineWidth   = 1 / zoom;
-        ctx.stroke();
+        if (!visibleRect || circleIntersectsRect(planet.orbitCenter, orbitR, 1 / zoom, visibleRect)) {
+            ctx.beginPath();
+            ctx.arc(planet.orbitCenter.x, planet.orbitCenter.y, orbitR, 0, PI2f);
+            ctx.strokeStyle = Colors.Eigengrau3;
+            ctx.lineWidth   = 1 / zoom;
+            ctx.stroke();
+        }
     }
 
     // Gravitational field rings
     if (DRAW_GRAVITATIONAL_FIELDS_FLAG) {
-        drawGravitationalField(ctx, planet, universe.now, zoom);
+        drawGravitationalField(ctx, planet, universe.now, zoom, visibleRect);
     }
 
     ctx.save();
@@ -211,10 +247,10 @@ export function drawPlanet(ctx, planet, universe, zoom) {
 
 // ── drawStar ──────────────────────────────────────────────────────────────────
 // VisibleUniverse.kt: drawStar()
-export function drawStar(ctx, star, now, zoom) {
+export function drawStar(ctx, star, now, zoom, visibleRect = null) {
     // Gravitational field rings for the star (drawn in world space, concentric with star.pos)
     if (DRAW_STAR_GRAVITATIONAL_FIELDS_FLAG) {
-        drawGravitationalField(ctx, star, now, zoom);
+        drawGravitationalField(ctx, star, now, zoom, visibleRect);
     }
 
     ctx.save();
@@ -226,22 +262,26 @@ export function drawStar(ctx, star, now, zoom) {
     ctx.fillStyle = star.color;
     ctx.fill();
 
+    // Cache coronas so we don't construct 62-vertex Path2D objects with arcTo every single frame
+    if (!star._corona1) {
+        star._corona1 = createStar(star.radius + 80, star.radius + 250, STAR_POINTS, 200);
+        star._corona2 = createStar(star.radius + 20, star.radius + 200, STAR_POINTS + 1, 200);
+    }
+
     // Corona 1: STAR_POINTS points, rotating with anim/23, rounded corners (200px)
     ctx.save();
     ctx.rotate((star.anim / 23) * PI2f);
-    const corona1 = createStar(star.radius + 80, star.radius + 250, STAR_POINTS, 200);
     ctx.strokeStyle = star.color;
     ctx.lineWidth   = 3 / zoom;
-    ctx.stroke(corona1);
+    ctx.stroke(star._corona1);
     ctx.restore();
 
     // Corona 2: STAR_POINTS+1 points, rotating with -anim/19, rounded corners (200px)
     ctx.save();
     ctx.rotate((star.anim / -19) * PI2f);
-    const corona2 = createStar(star.radius + 20, star.radius + 200, STAR_POINTS + 1, 200);
     ctx.strokeStyle = star.color;
     ctx.lineWidth   = 3 / zoom;
-    ctx.stroke(corona2);
+    ctx.stroke(star._corona2);
     ctx.restore();
 
     ctx.restore();
