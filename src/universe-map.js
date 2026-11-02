@@ -16,15 +16,19 @@
 // Powered by Leaflet.js with L.CRS.Simple for flat Cartesian 2D space coordinates [-200,000, +200,000]
 
 import { UNIVERSE_RANGE } from './universe.js';
+import { Vec2 } from './math.js';
 
 let map = null;
 let gridLayer = null;
 let orbitLayerGroup = null;
+let celestialBodyLayerGroup = null;
 let markerLayerGroup = null;
 let trackPolyline = null;
 let shipMarker = null;
 let starMarker = null;
+let starBodyCircle = null;
 let planetMarkers = [];
+let planetBodyCircles = [];
 let universeRef = null;
 let resumeCallback = null;
 
@@ -112,6 +116,41 @@ export function updateVisibleOrbits() {
             }).addTo(orbitLayerGroup);
         }
     }
+
+    if (shipMarker && universeRef && universeRef.ship) {
+        shipMarker.setLatLng(getShipMapCoords(universeRef.ship));
+    }
+}
+
+/**
+ * Compute the display coordinates for the spacecraft marker on the map.
+ * When landed on a celestial body, this guarantees that the base of the rocket icon
+ * visibly rests directly on the surface of the body disc (or marker perimeter at low zoom).
+ */
+export function getShipMapCoords(ship) {
+    if (!ship) return [0, 0];
+    if (ship.landing && ship.landing.planet && map) {
+        const p = ship.landing.planet;
+        const zoom = map.getZoom();
+        const scale = Math.pow(2, zoom);
+        const physicalPixelRadius = p.radius * scale;
+        const displayDiameter = Math.max(12, Math.min(28, Math.round(p.radius / 80)));
+        const markerPixelRadius = displayDiameter / 2;
+        const rocketBaseOffsetPx = 8.5; // distance from rocket icon center to its landing feet
+
+        let targetPixelDistance;
+        if (physicalPixelRadius >= markerPixelRadius) {
+            targetPixelDistance = physicalPixelRadius + rocketBaseOffsetPx;
+        } else {
+            targetPixelDistance = markerPixelRadius + rocketBaseOffsetPx;
+        }
+
+        const targetWorldDistance = targetPixelDistance / scale;
+        const offset = Vec2.makeWithAngleMag(ship.landing.angle, targetWorldDistance);
+        const surfacePos = p.pos.plus(offset);
+        return [surfacePos.y, surfacePos.x];
+    }
+    return [ship.pos.y, ship.pos.x];
 }
 
 /**
@@ -263,9 +302,10 @@ export function initUniverseMap(universe, onResumeCockpit) {
     gridLayer.addTo(map);
 
     orbitLayerGroup = L.layerGroup().addTo(map);
+    celestialBodyLayerGroup = L.layerGroup().addTo(map);
     markerLayerGroup = L.layerGroup().addTo(map);
 
-    map.on('moveend zoomend viewreset', updateVisibleOrbits);
+    map.on('moveend zoomend viewreset zoom', updateVisibleOrbits);
 
     const coordDisplay = document.getElementById('map-coords-readout');
     map.on('mousemove', (e) => {
@@ -278,7 +318,7 @@ export function initUniverseMap(universe, onResumeCockpit) {
 
     // Default view: center on spacecraft
     const ship = universe.ship;
-    map.setView([ship.pos.y, ship.pos.x], -7);
+    map.setView(getShipMapCoords(ship), -7);
 
     // Populate initial entities
     renderUniverseEntities();
@@ -290,14 +330,25 @@ export function initUniverseMap(universe, onResumeCockpit) {
 export function renderUniverseEntities() {
     if (!map || !universeRef) return;
 
+    if (celestialBodyLayerGroup) celestialBodyLayerGroup.clearLayers();
     markerLayerGroup.clearLayers();
     planetMarkers = [];
+    planetBodyCircles = [];
 
     // 1. Draw only orbits and boundary rings that intersect viewport
     updateVisibleOrbits();
 
-    // 2. Central Star Marker (Flat disc matching game aesthetic)
+    // 2. Central Star Physical Disc and Marker
     const star = universeRef.star;
+    starBodyCircle = L.circle([0, 0], {
+        radius: star.radius,
+        color: star.color,
+        fillColor: star.color,
+        fillOpacity: 0.95,
+        weight: 1.5,
+        interactive: true
+    }).addTo(celestialBodyLayerGroup);
+
     const starIcon = L.divIcon({
         className: 'star-map-icon',
         html: `<div class="star-disc" style="--star-color: ${star.color};"></div>`,
@@ -306,6 +357,7 @@ export function renderUniverseEntities() {
     });
 
     starMarker = L.marker([0, 0], { icon: starIcon }).addTo(markerLayerGroup);
+    starBodyCircle.on('click', () => starMarker.openPopup());
     starMarker.bindTooltip(`STAR: <b>${star.name}</b> [Class ${star.cls}]`, {
         direction: 'top',
         className: 'celestial-tooltip',
@@ -336,11 +388,21 @@ export function renderUniverseEntities() {
         if (btn) btn.onclick = () => map.flyTo([0, 0], -4, { duration: 1.2 });
     });
 
-    // 3. Planet Markers
+    // 3. Planet Physical Discs and Markers
     universeRef.planets.forEach((planet, idx) => {
         const isExplored = planet.explored;
         const color = planet.color || '#FFFFFF';
         const displayRadius = Math.max(12, Math.min(28, Math.round(planet.radius / 80)));
+
+        const bodyCircle = L.circle([planet.pos.y, planet.pos.x], {
+            radius: planet.radius,
+            color: color,
+            fillColor: color,
+            fillOpacity: 0.85,
+            weight: 1,
+            interactive: true
+        }).addTo(celestialBodyLayerGroup);
+        planetBodyCircles.push(bodyCircle);
 
         const planetIcon = L.divIcon({
             className: 'planet-map-icon',
@@ -355,6 +417,7 @@ export function renderUniverseEntities() {
         });
 
         const pMarker = L.marker([planet.pos.y, planet.pos.x], { icon: planetIcon }).addTo(markerLayerGroup);
+        bodyCircle.on('click', () => pMarker.openPopup());
         pMarker.bindTooltip(`BODY: <b>${planet.name}</b> [${isExplored ? 'SURVEYED' : 'UNEXPLORED'}]`, {
             direction: 'top',
             className: 'celestial-tooltip',
@@ -407,7 +470,7 @@ export function renderUniverseEntities() {
 
     // 5. Spacecraft Marker (Flat rocket SVG rotated to ship heading)
     const ship = universeRef.ship;
-    const shipDeg = (ship.angle * 180 / Math.PI) + 90;
+    const shipDeg = 90 - (ship.angle * 180 / Math.PI);
     const shipIcon = L.divIcon({
         className: 'ship-map-icon',
         html: `
@@ -421,7 +484,7 @@ export function renderUniverseEntities() {
         iconAnchor: [12, 12]
     });
 
-    shipMarker = L.marker([ship.pos.y, ship.pos.x], { icon: shipIcon, zIndexOffset: 1000 }).addTo(markerLayerGroup);
+    shipMarker = L.marker(getShipMapCoords(ship), { icon: shipIcon, zIndexOffset: 1000 }).addTo(markerLayerGroup);
     shipMarker.bindTooltip(`SPACECRAFT (CURRENT POSITION)`, {
         direction: 'top',
         permanent: true,
@@ -495,7 +558,7 @@ function updatePlanetSelector() {
         if (!val || !map) return;
 
         if (val === 'ship') {
-            map.flyTo([universeRef.ship.pos.y, universeRef.ship.pos.x], -5, { duration: 1.2 });
+            map.flyTo(getShipMapCoords(universeRef.ship), -5, { duration: 1.2 });
             shipMarker.openPopup();
         } else if (val === 'star') {
             map.flyTo([0, 0], -5, { duration: 1.2 });
@@ -521,24 +584,26 @@ let lastTrackLen = 0;
 export function updateMapPositions() {
     if (!map || !universeRef) return;
 
-    // 1. Move all planet markers along their orbits
+    // 1. Move all planet discs and markers along their orbits
     for (let i = 0; i < universeRef.planets.length; i++) {
         const p = universeRef.planets[i];
         const m = planetMarkers[i];
-        if (m && p) {
-            m.setLatLng([p.pos.y, p.pos.x]);
+        const c = planetBodyCircles[i];
+        if (p) {
+            if (c) c.setLatLng([p.pos.y, p.pos.x]);
+            if (m) m.setLatLng([p.pos.y, p.pos.x]);
         }
     }
 
     // 2. Move spacecraft marker and update orientation
     const ship = universeRef.ship;
     if (shipMarker && ship) {
-        shipMarker.setLatLng([ship.pos.y, ship.pos.x]);
+        shipMarker.setLatLng(getShipMapCoords(ship));
         const el = shipMarker.getElement();
         if (el) {
             const rot = el.querySelector('.ship-rotator');
             if (rot) {
-                const shipDeg = (ship.angle * 180 / Math.PI) + 90;
+                const shipDeg = 90 - (ship.angle * 180 / Math.PI);
                 rot.style.transform = `rotate(${shipDeg}deg)`;
             }
         }
@@ -570,7 +635,7 @@ export function showUniverseMap() {
             if (map) {
                 map.invalidateSize();
                 if (universeRef && universeRef.ship) {
-                    map.setView([universeRef.ship.pos.y, universeRef.ship.pos.x], map.getZoom());
+                    map.setView(getShipMapCoords(universeRef.ship), map.getZoom());
                 }
                 updateVisibleOrbits();
             }
