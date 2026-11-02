@@ -24,7 +24,8 @@ import {
     initUniverseMap,
     showUniverseMap,
     hideUniverseMap,
-    fitEntireUniverse
+    fitEntireUniverse,
+    updateMapPositions
 } from './universe-map.js';
 
 // ── Game State Machine ─────────────────────────────────────────────────────────
@@ -234,9 +235,11 @@ export function openMap() {
     if (pauseModal) pauseModal.classList.remove('visible');
     currentState = GameState.MAP;
     releaseStick();
+    // Reset simulation wallClockNanos so there is no time jump spike
+    universe.wallClockNanos = 0n;
 
     if (mapTitleDisplay) {
-        mapTitleDisplay.textContent = `SYSTEM: ${universe.star.name} (${getSystemDesignation(universe)})`;
+        mapTitleDisplay.textContent = `SYSTEM MAP // ${universe.star.name} (${getSystemDesignation(universe)})`;
     }
     showUniverseMap();
 }
@@ -428,10 +431,15 @@ function drawFlightStickOverlay(ctx) {
 
 // ── Main Render Loop ──────────────────────────────────────────────────────────
 function frame(timestamp) {
-    // Only step physics simulation when active in cockpit
-    if (currentState === GameState.PLAYING) {
+    // Step physics simulation when active in cockpit OR in live map view
+    if (currentState === GameState.PLAYING || currentState === GameState.MAP) {
         const nanos = BigInt(Math.round(timestamp * 1_000_000));
         universe.step(nanos);
+    }
+
+    // Update live orbital marker positions on the Leaflet map in real time
+    if (currentState === GameState.MAP) {
+        updateMapPositions();
     }
 
     // Only render canvas and update HUD if not completely covered by Map View

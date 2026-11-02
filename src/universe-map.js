@@ -412,7 +412,7 @@ export function renderUniverseEntities() {
         className: 'ship-map-icon',
         html: `
             <div class="ship-marker-wrapper">
-                <div style="transform: rotate(${shipDeg}deg); display: flex; align-items: center; justify-content: center;">
+                <div class="ship-rotator" style="transform: rotate(${shipDeg}deg); display: flex; align-items: center; justify-content: center;">
                     ${SVG_ROCKET}
                 </div>
             </div>
@@ -510,6 +510,47 @@ function updatePlanetSelector() {
         }
         selector.value = '';
     };
+}
+
+let lastTrackLen = 0;
+
+/**
+ * Live-updates the positions of all planet markers, spacecraft marker, and flight trail
+ * called every frame when the universe map is active.
+ */
+export function updateMapPositions() {
+    if (!map || !universeRef) return;
+
+    // 1. Move all planet markers along their orbits
+    for (let i = 0; i < universeRef.planets.length; i++) {
+        const p = universeRef.planets[i];
+        const m = planetMarkers[i];
+        if (m && p) {
+            m.setLatLng([p.pos.y, p.pos.x]);
+        }
+    }
+
+    // 2. Move spacecraft marker and update orientation
+    const ship = universeRef.ship;
+    if (shipMarker && ship) {
+        shipMarker.setLatLng([ship.pos.y, ship.pos.x]);
+        const el = shipMarker.getElement();
+        if (el) {
+            const rot = el.querySelector('.ship-rotator');
+            if (rot) {
+                const shipDeg = (ship.angle * 180 / Math.PI) + 90;
+                rot.style.transform = `rotate(${shipDeg}deg)`;
+            }
+        }
+    }
+
+    // 3. Update flight trail if new positions were recorded
+    if (trackPolyline && universeRef.track && universeRef.track.length > 1) {
+        if (universeRef.track.length !== lastTrackLen) {
+            lastTrackLen = universeRef.track.length;
+            trackPolyline.setLatLngs(universeRef.track.map(v => [v.y, v.x]));
+        }
+    }
 }
 
 /**
