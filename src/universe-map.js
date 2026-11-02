@@ -122,6 +122,39 @@ export function updateVisibleOrbits() {
     if (shipMarker && universeRef && universeRef.ship) {
         shipMarker.setLatLng(getShipMapCoords(universeRef.ship));
     }
+
+    updatePlanetLabels();
+}
+
+/**
+ * Dynamically adjusts celestial body label offsets so labels always hug the outer boundary of discs
+ */
+export function updatePlanetLabels() {
+    if (!map || !universeRef) return;
+    const zoom = map.getZoom();
+    const scale = Math.pow(2, zoom);
+
+    if (starMarker && universeRef.star) {
+        const starOffset = Math.max(16, Math.round(universeRef.star.radius * scale)) + 8;
+        const el = starMarker.getElement();
+        if (el) {
+            const label = el.querySelector('.star-label');
+            if (label) label.style.setProperty('--star-label-offset', `${starOffset}px`);
+        }
+    }
+
+    for (let i = 0; i < universeRef.planets.length; i++) {
+        const p = universeRef.planets[i];
+        const m = planetMarkers[i];
+        if (p && m) {
+            const offset = Math.max(12, Math.round(p.radius * scale)) + 6;
+            const el = m.getElement();
+            if (el) {
+                const label = el.querySelector('.planet-label');
+                if (label) label.style.setProperty('--planet-label-offset', `${offset}px`);
+            }
+        }
+    }
 }
 
 /**
@@ -136,15 +169,14 @@ export function getShipMapCoords(ship) {
         const zoom = map.getZoom();
         const scale = Math.pow(2, zoom);
         const physicalPixelRadius = p.radius * scale;
-        const displayDiameter = Math.max(12, Math.min(28, Math.round(p.radius / 80)));
-        const markerPixelRadius = displayDiameter / 2;
+        const minPixelRadius = 8;
         const rocketBaseOffsetPx = 8.5; // distance from rocket icon center to its landing feet
 
         let targetPixelDistance;
-        if (physicalPixelRadius >= markerPixelRadius) {
+        if (physicalPixelRadius >= minPixelRadius) {
             targetPixelDistance = physicalPixelRadius + rocketBaseOffsetPx;
         } else {
-            targetPixelDistance = markerPixelRadius + rocketBaseOffsetPx;
+            targetPixelDistance = minPixelRadius + rocketBaseOffsetPx;
         }
 
         const targetWorldDistance = targetPixelDistance / scale;
@@ -441,6 +473,10 @@ export function initUniverseMap(universe, onResumeCockpit) {
             fitEntireUniverse();
         };
     }
+    const returnBtn = document.getElementById('btn-return-cockpit');
+    if (returnBtn && resumeCallback) {
+        returnBtn.onclick = resumeCallback;
+    }
 
     // Auto-disengage tracking when user drags the map manually
     map.on('dragstart', () => {
@@ -473,18 +509,20 @@ export function renderUniverseEntities() {
     const star = universeRef.star;
     starBodyCircle = L.circle([0, 0], {
         radius: star.radius,
-        color: star.color,
+        color: '#FFFFFF',
         fillColor: star.color,
         fillOpacity: 0.95,
-        weight: 1.5,
+        weight: 2.5,
         interactive: true
     }).addTo(celestialBodyLayerGroup);
 
+    const scale = Math.pow(2, map.getZoom());
+    const starOffset = Math.max(16, Math.round(star.radius * scale)) + 8;
     const starIcon = L.divIcon({
         className: 'star-map-icon',
-        html: `<div class="star-disc" style="--star-color: ${star.color};"></div>`,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
+        html: `<span class="star-label" style="--star-label-offset: ${starOffset}px;">${star.name}</span>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0]
     });
 
     starMarker = L.marker([0, 0], { icon: starIcon }).addTo(markerLayerGroup);
@@ -526,28 +564,24 @@ export function renderUniverseEntities() {
     universeRef.planets.forEach((planet, idx) => {
         const isExplored = planet.explored;
         const color = planet.color || '#FFFFFF';
-        const displayRadius = Math.max(12, Math.min(28, Math.round(planet.radius / 80)));
+        const borderColor = isExplored ? '#00FF66' : '#FFFFFF';
 
         const bodyCircle = L.circle([planet.pos.y, planet.pos.x], {
             radius: planet.radius,
-            color: color,
+            color: borderColor,
             fillColor: color,
             fillOpacity: 0.85,
-            weight: 1,
+            weight: 2,
             interactive: true
         }).addTo(celestialBodyLayerGroup);
         planetBodyCircles.push(bodyCircle);
 
+        const labelOffset = Math.max(12, Math.round(planet.radius * scale)) + 6;
         const planetIcon = L.divIcon({
             className: 'planet-map-icon',
-            html: `
-                <div class="planet-marker-body ${isExplored ? 'surveyed' : ''}"
-                     style="--planet-color: ${color}; width: ${displayRadius}px; height: ${displayRadius}px;">
-                </div>
-                <span class="planet-label">${planet.name}</span>
-            `,
-            iconSize: [displayRadius, displayRadius],
-            iconAnchor: [displayRadius / 2, displayRadius / 2]
+            html: `<span class="planet-label" style="--planet-label-offset: ${labelOffset}px;">${planet.name}</span>`,
+            iconSize: [0, 0],
+            iconAnchor: [0, 0]
         });
 
         const pMarker = L.marker([planet.pos.y, planet.pos.x], { icon: planetIcon }).addTo(markerLayerGroup);
@@ -555,7 +589,7 @@ export function renderUniverseEntities() {
         pMarker.bindTooltip(`BODY: <b>${planet.name}</b> [${isExplored ? 'SURVEYED' : 'UNEXPLORED'}]`, {
             direction: 'top',
             className: 'celestial-tooltip',
-            offset: [0, -displayRadius / 2 - 4]
+            offset: [0, -14]
         });
 
         const planetPopupContent = `
