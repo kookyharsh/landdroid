@@ -212,17 +212,13 @@ export function drawPlanet(ctx, planet, universe, zoom) {
 // ── drawStar ──────────────────────────────────────────────────────────────────
 // VisibleUniverse.kt: drawStar()
 export function drawStar(ctx, star, now, zoom) {
+    // Gravitational field rings for the star (drawn in world space, concentric with star.pos)
+    if (DRAW_STAR_GRAVITATIONAL_FIELDS_FLAG) {
+        drawGravitationalField(ctx, star, now, zoom);
+    }
+
     ctx.save();
     ctx.translate(star.pos.x, star.pos.y);
-
-    // Gravitational field rings for the star
-    if (DRAW_STAR_GRAVITATIONAL_FIELDS_FLAG) {
-        // drawGravitationalField draws at planet.pos, so we must undo the translate
-        ctx.save();
-        ctx.translate(-star.pos.x, -star.pos.y);
-        drawGravitationalField(ctx, star, now, zoom);
-        ctx.restore();
-    }
 
     // Star filled circle
     ctx.beginPath();
@@ -230,23 +226,21 @@ export function drawStar(ctx, star, now, zoom) {
     ctx.fillStyle = star.color;
     ctx.fill();
 
-    // Corona 1: STAR_POINTS points, rotating with anim/23
+    // Corona 1: STAR_POINTS points, rotating with anim/23, rounded corners (200px)
     ctx.save();
     ctx.rotate((star.anim / 23) * PI2f);
-    const corona1 = createStar(star.radius + 80, star.radius + 250, STAR_POINTS);
+    const corona1 = createStar(star.radius + 80, star.radius + 250, STAR_POINTS, 200);
     ctx.strokeStyle = star.color;
     ctx.lineWidth   = 3 / zoom;
-    ctx.lineJoin    = 'round'; // approximate cornerPathEffect
     ctx.stroke(corona1);
     ctx.restore();
 
-    // Corona 2: STAR_POINTS+1 points, rotating with -anim/19
+    // Corona 2: STAR_POINTS+1 points, rotating with -anim/19, rounded corners (200px)
     ctx.save();
     ctx.rotate((star.anim / -19) * PI2f);
-    const corona2 = createStar(star.radius + 20, star.radius + 200, STAR_POINTS + 1);
+    const corona2 = createStar(star.radius + 20, star.radius + 200, STAR_POINTS + 1, 200);
     ctx.strokeStyle = star.color;
     ctx.lineWidth   = 3 / zoom;
-    ctx.lineJoin    = 'round';
     ctx.stroke(corona2);
     ctx.restore();
 
@@ -272,7 +266,7 @@ export function drawSpacecraft(ctx, ship, zoom) {
     }
 
     // Ship body fill (fauxpaque background)
-    ctx.fillStyle = '#16161D'; // Colors.Eigengrau
+    ctx.fillStyle = ship.transit ? '#000000' : '#16161D';
     ctx.fill(spaceshipPath);
 
     // Ship body outline
@@ -295,15 +289,18 @@ export function drawSpacecraft(ctx, ship, zoom) {
 // VisibleUniverse.kt: drawLanding()
 // flagFlag() is always true on web (feature flag always enabled)
 export function drawLanding(ctx, landing, zoom) {
+    // Plant flag beside the lander along the planet surface (offset ~25px)
+    const angleOffset = Math.min(0.2, 25 / landing.planet.radius);
+    const flagAngle   = landing.angle + angleOffset;
     const v = landing.planet.pos.plus(
-        Vec2.makeWithAngleMag(landing.angle, landing.planet.radius)
+        Vec2.makeWithAngleMag(flagAngle, landing.planet.radius)
     );
     const strokeWidth = 2 / zoom;
     const height      = 80;
 
     ctx.save();
     ctx.translate(v.x, v.y);
-    ctx.rotate(landing.angle);
+    ctx.rotate(flagAngle);
 
     // Flag shape from VisibleUniverse.kt
     const flagPath = new Path2D();

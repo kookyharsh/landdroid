@@ -27,14 +27,37 @@ export function createPolygon(radius, sides) {
     return path;
 }
 
-export function createStar(radius1, radius2, points) {
+export function createStar(radius1, radius2, points, cornerRadius = 200) {
     const path = new Path2D();
-    const angleStep = PI2f / points;
-    path.moveTo(radius1, 0);
-    path.lineTo(radius2 * Math.cos(angleStep * 0.5), radius2 * Math.sin(angleStep * 0.5));
-    for (let i = 1; i < points; i++) {
-        path.lineTo(radius1 * Math.cos(angleStep * i), radius1 * Math.sin(angleStep * i));
-        path.lineTo(radius2 * Math.cos(angleStep * (i + 0.5)), radius2 * Math.sin(angleStep * (i + 0.5)));
+    const totalVertices = points * 2;
+    const angleStep = PI2f / totalVertices;
+
+    // Collect all vertex coordinates for the star
+    const vertices = [];
+    for (let i = 0; i < totalVertices; i++) {
+        const r = (i % 2 === 0) ? radius1 : radius2;
+        const a = i * angleStep;
+        vertices.push({ x: r * Math.cos(a), y: r * Math.sin(a) });
+    }
+
+    if (cornerRadius <= 0) {
+        path.moveTo(vertices[0].x, vertices[0].y);
+        for (let i = 1; i < totalVertices; i++) {
+            path.lineTo(vertices[i].x, vertices[i].y);
+        }
+        path.closePath();
+        return path;
+    }
+
+    // Rounded star replicating Android Skia's PathEffect.cornerPathEffect(200f)
+    const last = vertices[totalVertices - 1];
+    const v0 = vertices[0];
+    path.moveTo((last.x + v0.x) / 2, (last.y + v0.y) / 2);
+
+    for (let i = 0; i < totalVertices; i++) {
+        const curr = vertices[i];
+        const next = vertices[(i + 1) % totalVertices];
+        path.arcTo(curr.x, curr.y, next.x, next.y, cornerRadius);
     }
     path.closePath();
     return path;
