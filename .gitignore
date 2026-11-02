@@ -1,0 +1,15 @@
+# Node / temporary scratch
+scratch/
+test_*.mjs
+*.log
+.DS_Store
+Thumbs.db
+
+# Archives & raw Android source files
+*.tar.gz
+*.zip
+*.kt
+*.java
+base-refs_heads_android17-release-packages-EasterEgg/
+orignal files/
+
