@@ -124,7 +124,7 @@
         }
 
         /* Flat Minimalist Console Button (matches original #autoBtn) */
-        .hud-btn, .modal-btn, .return-btn, .fit-btn, .popup-btn {
+        .hud-btn, .modal-btn, .return-btn, .fit-btn, .track-btn, .popup-btn {
             background: transparent;
             border: 1px solid #B7B7FF;
             color: #B7B7FF;
@@ -146,7 +146,7 @@
             text-decoration: none;
         }
 
-        .hud-btn:hover, .modal-btn:hover, .return-btn:hover, .fit-btn:hover, .popup-btn:hover {
+        .hud-btn:hover, .modal-btn:hover, .return-btn:hover, .fit-btn:hover, .track-btn:hover, .popup-btn:hover {
             background: rgba(183, 183, 255, 0.15);
             color: #FFFFFF;
             border-color: #FFFFFF;
@@ -158,7 +158,56 @@
             border-color: #4285F4;
         }
 
-        .hud-btn svg, .modal-btn svg, .return-btn svg, .fit-btn svg, .popup-btn svg {
+        .track-btn.active {
+            border-color: #34A853;
+            color: #34A853;
+            background: rgba(52, 168, 83, 0.15);
+        }
+
+        .track-btn.active:hover {
+            border-color: #34A853;
+            color: #FFFFFF;
+            background: rgba(52, 168, 83, 0.28);
+        }
+
+        .map-fab-btn {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            z-index: 800;
+            background: #16161D;
+            border: 1px solid #B7B7FF;
+            color: #B7B7FF;
+            width: 38px;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 0;
+            outline: none;
+            transition: all 0.15s ease;
+        }
+
+        .map-fab-btn:hover {
+            border-color: #FFFFFF;
+            color: #FFFFFF;
+            background: rgba(183, 183, 255, 0.15);
+        }
+
+        .map-fab-btn.active {
+            border-color: #34A853;
+            color: #34A853;
+            background: rgba(52, 168, 83, 0.15);
+        }
+
+        .map-fab-btn.active:hover {
+            border-color: #34A853;
+            color: #FFFFFF;
+            background: rgba(52, 168, 83, 0.28);
+        }
+
+        .hud-btn svg, .modal-btn svg, .return-btn svg, .fit-btn svg, .track-btn svg, .map-fab-btn svg, .popup-btn svg {
             display: block;
             flex-shrink: 0;
         }
@@ -552,13 +601,20 @@
                 <select id="map-jump-select" class="map-select">
                     <option value="">-- JUMP TO OBJECT --</option>
                 </select>
-                <button id="btn-fit-universe" class="fit-btn" title="View Entire Universe">
+                <button id="btn-track-ship" class="track-btn active" title="Track Spacecraft (Auto-Follow & Dynamic Zoom)">
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M18.75 3.94L4.07 10.08c-.83.35-.81 1.53.02 1.85L9.43 14c.26.1.47.31.57.57l2.06 5.33c.32.84 1.51.86 1.86.03l6.15-14.67c.33-.83-.5-1.66-1.32-1.32z"/></svg>
+                    <span id="track-btn-text">TRACK [LOCKED]</span>
+                </button>
+                <button id="btn-fit-universe" class="fit-btn" title="View Entire Universe">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M15 3l2.3 2.3-2.89 2.87 1.42 1.42L18.7 6.7 21 9V3h-6zM3 9l2.3-2.3 2.87 2.89 1.42-1.42L6.7 5.3 9 3H3v6zm6 12l-2.3-2.3 2.89-2.87-1.42-1.42L5.3 17.3 3 15v6h6zm12-6l-2.3 2.3-2.87-2.89-1.42 1.42 2.89 2.87L15 21h6v-6z"/></svg>
                     FIT ALL
                 </button>
             </div>
         </div>
         <div id="leaflet-map"></div>
+        <button id="map-my-location-fab" class="map-fab-btn active" title="Center & Track Spacecraft">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M18.75 3.94L4.07 10.08c-.83.35-.81 1.53.02 1.85L9.43 14c.26.1.47.31.57.57l2.06 5.33c.32.84 1.51.86 1.86.03l6.15-14.67c.33-.83-.5-1.66-1.32-1.32z"/></svg>
+        </button>
     </div>
 
     <div id="loading">INITIALIZING UNIVERSE…</div>

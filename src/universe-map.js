@@ -31,6 +31,8 @@ let planetMarkers = [];
 let planetBodyCircles = [];
 let universeRef = null;
 let resumeCallback = null;
+let isTrackingShip = true;
+let isMapZooming = false;
 
 // Clean SVGs from assets/ (currentColor)
 const SVG_LOCATION = `<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M0 0h24v24H0V0z" fill="none"/><path d="M18.75 3.94L4.07 10.08c-.83.35-.81 1.53.02 1.85L9.43 14c.26.1.47.31.57.57l2.06 5.33c.32.84 1.51.86 1.86.03l6.15-14.67c.33-.83-.5-1.66-1.32-1.32z"/></svg>`;
@@ -151,6 +153,107 @@ export function getShipMapCoords(ship) {
         return [surfacePos.y, surfacePos.x];
     }
     return [ship.pos.y, ship.pos.x];
+}
+
+/**
+ * Calculate distance to the nearest celestial surface (primary star or planets)
+ */
+export function getDistanceToNearestCelestialSurface(ship, universe) {
+    if (!ship || !universe) return { dist: Infinity, body: null };
+    let minDist = Infinity;
+    let nearestBody = null;
+
+    // 1. Check Primary Star
+    if (universe.star) {
+        const dStar = Math.max(0, ship.pos.minus(universe.star.pos).mag() - universe.star.radius);
+        if (dStar < minDist) {
+            minDist = dStar;
+            nearestBody = universe.star;
+        }
+    }
+
+    // 2. Check All Planets
+    if (universe.planets) {
+        for (const planet of universe.planets) {
+            const dPlanet = Math.max(0, ship.pos.minus(planet.pos).mag() - planet.radius);
+            if (dPlanet < minDist) {
+                minDist = dPlanet;
+                nearestBody = planet;
+            }
+        }
+    }
+
+    return { dist: minDist, body: nearestBody };
+}
+
+/**
+ * Calculate the ideal map zoom level based on proximity to celestial bodies.
+ * Zooms in close when approaching or landed on a star or planet (-2.0 to -3.5),
+ * and smoothly pulls out to wide system overview in deep space (-7.0).
+ */
+export function calculateDynamicMapZoom(dist, body) {
+    if (dist <= 0) {
+        if (body && body.radius > 3000) return -3.5;
+        return -2.0;
+    }
+
+    const bodyOffset = body ? Math.min(4000, body.radius * 0.5) : 1500;
+    const s = Math.min(0.25, Math.max(Math.pow(2, -7), 500 / (dist + bodyOffset)));
+    const targetZ = Math.log2(s);
+
+    return Math.max(-7.0, Math.min(-2.0, targetZ));
+}
+
+/**
+ * Toggle auto-follow spacecraft mode on the universe map
+ */
+export function toggleTrackingShip() {
+    setTrackingShip(!isTrackingShip);
+}
+
+/**
+ * Enable or disable auto-follow spacecraft mode and update UI buttons
+ */
+export function setTrackingShip(enabled) {
+    isTrackingShip = enabled;
+    updateTrackButtonUI();
+
+    if (isTrackingShip && universeRef && universeRef.ship && map) {
+        const ship = universeRef.ship;
+        const coords = getShipMapCoords(ship);
+        const { dist, body } = getDistanceToNearestCelestialSurface(ship, universeRef);
+        const targetZoom = calculateDynamicMapZoom(dist, body);
+        isMapZooming = true;
+        map.flyTo(coords, targetZoom, { duration: 0.9 });
+        setTimeout(() => { isMapZooming = false; }, 1000);
+    }
+}
+
+/**
+ * Update active state styles on the track buttons
+ */
+export function updateTrackButtonUI() {
+    const trackBtn = document.getElementById('btn-track-ship');
+    const fabBtn = document.getElementById('map-my-location-fab');
+    const btnText = document.getElementById('track-btn-text');
+
+    if (trackBtn) {
+        if (isTrackingShip) {
+            trackBtn.classList.add('active');
+            if (btnText) btnText.textContent = 'TRACK [LOCKED]';
+        } else {
+            trackBtn.classList.remove('active');
+            if (btnText) btnText.textContent = 'TRACK SHIP';
+        }
+    }
+
+    if (fabBtn) {
+        if (isTrackingShip) {
+            fabBtn.classList.add('active');
+        } else {
+            fabBtn.classList.remove('active');
+        }
+    }
 }
 
 /**
@@ -316,12 +419,40 @@ export function initUniverseMap(universe, onResumeCockpit) {
         }
     });
 
-    // Default view: center on spacecraft
+    // Default view: center on spacecraft with initial dynamic zoom
     const ship = universe.ship;
-    map.setView(getShipMapCoords(ship), -7);
+    const { dist, body } = getDistanceToNearestCelestialSurface(ship, universe);
+    const initialZoom = calculateDynamicMapZoom(dist, body);
+    map.setView(getShipMapCoords(ship), initialZoom);
+
+    // Setup track button listeners
+    const trackBtn = document.getElementById('btn-track-ship');
+    if (trackBtn) {
+        trackBtn.onclick = () => toggleTrackingShip();
+    }
+    const fabBtn = document.getElementById('map-my-location-fab');
+    if (fabBtn) {
+        fabBtn.onclick = () => toggleTrackingShip();
+    }
+    const fitBtn = document.getElementById('btn-fit-universe');
+    if (fitBtn) {
+        fitBtn.onclick = () => {
+            setTrackingShip(false);
+            fitEntireUniverse();
+        };
+    }
+
+    // Auto-disengage tracking when user drags the map manually
+    map.on('dragstart', () => {
+        if (isTrackingShip) {
+            isTrackingShip = false;
+            updateTrackButtonUI();
+        }
+    });
 
     // Populate initial entities
     renderUniverseEntities();
+    updateTrackButtonUI();
 }
 
 /**
@@ -385,7 +516,10 @@ export function renderUniverseEntities() {
     starMarker.bindPopup(starPopupContent);
     starMarker.on('popupopen', () => {
         const btn = document.getElementById('btn-zoom-star');
-        if (btn) btn.onclick = () => map.flyTo([0, 0], -4, { duration: 1.2 });
+        if (btn) btn.onclick = () => {
+            setTrackingShip(false);
+            map.flyTo([0, 0], -4, { duration: 1.2 });
+        };
     });
 
     // 3. Planet Physical Discs and Markers
@@ -451,7 +585,10 @@ export function renderUniverseEntities() {
         pMarker.bindPopup(planetPopupContent);
         pMarker.on('popupopen', () => {
             const btn = document.getElementById(`btn-zoom-p-${idx}`);
-            if (btn) btn.onclick = () => map.flyTo([planet.pos.y, planet.pos.x], -3, { duration: 1.2 });
+            if (btn) btn.onclick = () => {
+                setTrackingShip(false);
+                map.flyTo([planet.pos.y, planet.pos.x], -3, { duration: 1.2 });
+            };
         });
 
         planetMarkers.push(pMarker);
@@ -558,12 +695,14 @@ function updatePlanetSelector() {
         if (!val || !map) return;
 
         if (val === 'ship') {
-            map.flyTo(getShipMapCoords(universeRef.ship), -5, { duration: 1.2 });
+            setTrackingShip(true);
             shipMarker.openPopup();
         } else if (val === 'star') {
+            setTrackingShip(false);
             map.flyTo([0, 0], -5, { duration: 1.2 });
             starMarker.openPopup();
         } else if (val.startsWith('planet-')) {
+            setTrackingShip(false);
             const idx = parseInt(val.split('-')[1], 10);
             const p = universeRef.planets[idx];
             if (p && planetMarkers[idx]) {
@@ -616,6 +755,24 @@ export function updateMapPositions() {
             trackPolyline.setLatLngs(universeRef.track.map(v => [v.y, v.x]));
         }
     }
+
+    // 4. Auto-tracking spacecraft with dynamic zoom
+    if (isTrackingShip && ship && map && map._loaded) {
+        const shipCoords = getShipMapCoords(ship);
+        if (!isMapZooming) {
+            map.panTo(shipCoords, { animate: false });
+
+            const { dist, body } = getDistanceToNearestCelestialSurface(ship, universeRef);
+            const targetZoom = calculateDynamicMapZoom(dist, body);
+            const currentZoom = map.getZoom();
+
+            if (Math.abs(targetZoom - currentZoom) >= 0.75) {
+                isMapZooming = true;
+                map.flyTo(shipCoords, targetZoom, { duration: 1.0 });
+                setTimeout(() => { isMapZooming = false; }, 1100);
+            }
+        }
+    }
 }
 
 /**
@@ -631,12 +788,10 @@ export function showUniverseMap() {
         initUniverseMap(universeRef, resumeCallback);
     } else {
         renderUniverseEntities();
+        setTrackingShip(true);
         setTimeout(() => {
             if (map) {
                 map.invalidateSize();
-                if (universeRef && universeRef.ship) {
-                    map.setView(getShipMapCoords(universeRef.ship), map.getZoom());
-                }
                 updateVisibleOrbits();
             }
         }, 60);
@@ -658,6 +813,7 @@ export function hideUniverseMap() {
  */
 export function fitEntireUniverse() {
     if (!map) return;
+    setTrackingShip(false);
     map.fitBounds([[-UNIVERSE_RANGE, -UNIVERSE_RANGE], [UNIVERSE_RANGE, UNIVERSE_RANGE]], { padding: [20, 20] });
     setTimeout(() => updateVisibleOrbits(), 100);
 }
