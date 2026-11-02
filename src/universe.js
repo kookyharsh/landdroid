@@ -255,8 +255,13 @@ export class Landing {
         if (this.ship !== null) {
             const landingVector = Vec2.makeWithAngleMag(this.angle, this.ship.radius + this.planet.radius);
             const desiredPos    = this.planet.pos.plus(landingVector);
-            // lerp snap (Universe.kt: ship.pos = ship.pos * 0.5 + desiredPos * 0.5)
-            this.ship.pos   = this.ship.pos.times(0.5).plus(desiredPos.times(0.5));
+            const dist = this.ship.pos.distance(desiredPos);
+            if (dist < 1.5) {
+                this.ship.pos = desiredPos;
+                this.ship.velocity = this.planet.velocity;
+            } else {
+                this.ship.pos = this.ship.pos.times(0.5).plus(desiredPos.times(0.5));
+            }
             this.ship.angle = this.angle;
         }
         this.fuse.update(dt);
