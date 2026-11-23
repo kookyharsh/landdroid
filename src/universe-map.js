@@ -24,11 +24,13 @@ let orbitLayerGroup = null;
 let celestialBodyLayerGroup = null;
 let markerLayerGroup = null;
 let trackPolyline = null;
+let lastTrackPoint;
 let shipMarker = null;
 let starMarker = null;
 let starBodyCircle = null;
 let planetMarkers = [];
 let planetBodyCircles = [];
+let planetSurveyStates = [];
 let universeRef = null;
 let resumeCallback = null;
 let isTrackingShip = true;
@@ -501,6 +503,7 @@ export function renderUniverseEntities() {
     markerLayerGroup.clearLayers();
     planetMarkers = [];
     planetBodyCircles = [];
+    planetSurveyStates = [];
 
     // 1. Draw only orbits and boundary rings that intersect viewport
     updateVisibleOrbits();
@@ -562,13 +565,12 @@ export function renderUniverseEntities() {
 
     // 3. Planet Physical Discs and Markers
     universeRef.planets.forEach((planet, idx) => {
-        const isExplored = planet.explored;
         const color = planet.color || '#FFFFFF';
-        const borderColor = isExplored ? '#00FF66' : '#FFFFFF';
+        planetSurveyStates.push(planet.explored);
 
         const bodyCircle = L.circle([planet.pos.y, planet.pos.x], {
             radius: planet.radius,
-            color: borderColor,
+            color: planetBorderColor(planet.explored),
             fillColor: color,
             fillOpacity: 0.85,
             weight: 2,
@@ -586,18 +588,16 @@ export function renderUniverseEntities() {
 
         const pMarker = L.marker([planet.pos.y, planet.pos.x], { icon: planetIcon }).addTo(markerLayerGroup);
         bodyCircle.on('click', () => pMarker.openPopup());
-        pMarker.bindTooltip(`BODY: <b>${planet.name}</b> [${isExplored ? 'SURVEYED' : 'UNEXPLORED'}]`, {
+        pMarker.bindTooltip(planetTooltip(planet), {
             direction: 'top',
             className: 'celestial-tooltip',
             offset: [0, -14]
         });
 
-        const planetPopupContent = `
+        pMarker.bindPopup(() => `
             <div class="celestial-popup planet-popup">
                 <div class="popup-header">
-                    <span class="popup-tag ${isExplored ? 'tag-surveyed' : 'tag-unexplored'}">
-                        ${isExplored ? '[SURVEYED]' : '[UNEXPLORED]'}
-                    </span>
+                    <span class="popup-tag ${planet.explored ? 'tag-surveyed' : 'tag-unexplored'}" data-field="survey">${planetSurveyLabel(planet)}</span>
                     <span class="popup-title">${planet.name}</span>
                 </div>
                 <div class="popup-grid">
@@ -609,14 +609,13 @@ export function renderUniverseEntities() {
                     <div class="grid-item"><span class="k">ATMOSPHERE</span><span class="v">${capitalize(planet.atmosphere) || 'None'}</span></div>
                     <div class="grid-item"><span class="k">FAUNA</span><span class="v">${capitalize(planet.fauna) || 'None'}</span></div>
                     <div class="grid-item"><span class="k">FLORA</span><span class="v">${capitalize(planet.flora) || 'None'}</span></div>
-                    <div class="grid-item full"><span class="k">COORDINATES</span><span class="v">&lt;${fmtCoord(planet.pos.x)}, ${fmtCoord(planet.pos.y)}&gt;</span></div>
+                    <div class="grid-item full"><span class="k">COORDINATES</span><span class="v" data-field="position">${formatPosition(planet.pos)}</span></div>
                 </div>
                 <div class="popup-actions">
                     <button class="popup-btn hud-btn" id="btn-zoom-p-${idx}">${SVG_PLACE} TARGET & ZOOM IN</button>
                 </div>
             </div>
-        `;
-        pMarker.bindPopup(planetPopupContent);
+        `);
         pMarker.on('popupopen', () => {
             const btn = document.getElementById(`btn-zoom-p-${idx}`);
             if (btn) btn.onclick = () => {
@@ -629,15 +628,14 @@ export function renderUniverseEntities() {
     });
 
     // 4. Flight Track Trail (historical path)
-    if (universeRef.track && universeRef.track.length > 1) {
-        const trackLatLngs = universeRef.track.map(v => [v.y, v.x]);
-        trackPolyline = L.polyline(trackLatLngs, {
-            color: '#34A853',
-            weight: 1.5,
-            opacity: 0.7,
-            dashArray: '3, 6'
-        }).addTo(markerLayerGroup);
-    }
+    trackPolyline = L.polyline([], {
+        color: '#34A853',
+        weight: 1.5,
+        opacity: 0.7,
+        dashArray: '3, 6'
+    }).addTo(markerLayerGroup);
+    lastTrackPoint = undefined;
+    updateFlightTrack(universeRef.ship.track.positions);
 
     // 5. Spacecraft Marker (Flat rocket SVG rotated to ship heading)
     const ship = universeRef.ship;
@@ -646,7 +644,7 @@ export function renderUniverseEntities() {
         className: 'ship-map-icon',
         html: `
             <div class="ship-marker-wrapper">
-                <div class="ship-rotator" style="transform: rotate(${shipDeg}deg); display: flex; align-items: center; justify-content: center;">
+                <div class="ship-rotator" style="transform: rotate(${shipDeg}deg);">
                     ${SVG_ROCKET}
                 </div>
             </div>
@@ -663,36 +661,77 @@ export function renderUniverseEntities() {
         offset: [0, -14]
     });
 
-    const isLanded = !!ship.landing;
-    const closest = universeRef.closestPlanet();
-    const distToClosest = Math.max(0, closest.pos.minus(ship.pos).mag() - closest.radius);
-
-    const shipPopupContent = `
+    shipMarker.bindPopup(() => {
+        const telemetry = getShipTelemetry(ship);
+        return `
         <div class="celestial-popup ship-popup">
             <div class="popup-header">
                 <span class="popup-tag tag-ship">MISSION ACTIVE</span>
                 <span class="popup-title">SPACECRAFT TELEMETRY</span>
             </div>
             <div class="popup-grid">
-                <div class="grid-item full"><span class="k">FLIGHT STATUS</span><span class="v">${isLanded ? `LANDED ON ${ship.landing.planet.name.toUpperCase()}` : 'IN ORBIT / FLIGHT'}</span></div>
-                <div class="grid-item"><span class="k">VELOCITY</span><span class="v">${Math.round(ship.velocity.mag())} m/s</span></div>
-                <div class="grid-item"><span class="k">CURRENT THRUST</span><span class="v">${Math.round(ship.thrust.mag() * 100)}%</span></div>
-                <div class="grid-item"><span class="k">NEAREST BODY</span><span class="v">${closest.name}</span></div>
-                <div class="grid-item"><span class="k">ALTITUDE</span><span class="v">${Math.round(distToClosest).toLocaleString()} m</span></div>
-                <div class="grid-item full"><span class="k">CURRENT POSITION</span><span class="v">&lt;${fmtCoord(ship.pos.x)}, ${fmtCoord(ship.pos.y)}&gt;</span></div>
+                <div class="grid-item full"><span class="k">FLIGHT STATUS</span><span class="v" data-field="status">${telemetry.status}</span></div>
+                <div class="grid-item"><span class="k">VELOCITY</span><span class="v" data-field="velocity">${telemetry.velocity}</span></div>
+                <div class="grid-item"><span class="k">CURRENT THRUST</span><span class="v" data-field="thrust">${telemetry.thrust}</span></div>
+                <div class="grid-item"><span class="k">NEAREST BODY</span><span class="v" data-field="nearest">${telemetry.nearest}</span></div>
+                <div class="grid-item"><span class="k">ALTITUDE</span><span class="v" data-field="altitude">${telemetry.altitude}</span></div>
+                <div class="grid-item full"><span class="k">CURRENT POSITION</span><span class="v" data-field="position">${telemetry.position}</span></div>
             </div>
             <div class="popup-actions">
                 <button class="popup-btn hud-btn" id="btn-resume-from-ship">${SVG_ROCKET} RETURN TO COCKPIT</button>
             </div>
         </div>
-    `;
-    shipMarker.bindPopup(shipPopupContent);
+        `;
+    });
     shipMarker.on('popupopen', () => {
         const btn = document.getElementById('btn-resume-from-ship');
         if (btn && resumeCallback) btn.onclick = resumeCallback;
     });
 
     updatePlanetSelector();
+}
+
+function formatPosition(pos) {
+    return `<${fmtCoord(pos.x)}, ${fmtCoord(pos.y)}>`;
+}
+
+function planetBorderColor(explored) {
+    return explored ? '#00FF66' : '#FFFFFF';
+}
+
+function planetSurveyLabel(planet) {
+    return planet.explored ? '[SURVEYED]' : '[UNEXPLORED]';
+}
+
+function planetTooltip(planet) {
+    return `BODY: <b>${planet.name}</b> ${planetSurveyLabel(planet)}`;
+}
+
+function getShipTelemetry(ship) {
+    const closest = universeRef.closestPlanet();
+    const altitude = Math.max(0, closest.pos.distance(ship.pos) - closest.radius);
+    return {
+        status: ship.landing ? `LANDED ON ${ship.landing.planet.name.toUpperCase()}` : 'IN ORBIT / FLIGHT',
+        velocity: `${Math.round(ship.velocity.mag())} m/s`,
+        thrust: `${Math.round(ship.thrust.mag() * 100)}%`,
+        nearest: closest.name,
+        altitude: `${Math.round(altitude).toLocaleString()} m`,
+        position: formatPosition(ship.pos),
+    };
+}
+
+function updateFlightTrack(positions) {
+    const lastPoint = positions.at(-1);
+    if (lastPoint === lastTrackPoint) return;
+
+    // Append a single new sample, or rebuild when the track has been trimmed or cleared.
+    if (lastPoint && lastTrackPoint && positions.at(-2) === lastTrackPoint &&
+        positions.length === trackPolyline.getLatLngs().length + 1) {
+        trackPolyline.addLatLng([lastPoint.y, lastPoint.x]);
+    } else {
+        trackPolyline.setLatLngs(positions.map(point => [point.y, point.x]));
+    }
+    lastTrackPoint = lastPoint;
 }
 
 /**
@@ -748,8 +787,6 @@ function updatePlanetSelector() {
     };
 }
 
-let lastTrackLen = 0;
-
 /**
  * Live-updates the positions of all planet markers, spacecraft marker, and flight trail
  * called every frame when the universe map is active.
@@ -758,15 +795,36 @@ export function updateMapPositions() {
     if (!map || !universeRef) return;
 
     // 1. Move all planet discs and markers along their orbits
+    let surveyChanged = false;
     for (let i = 0; i < universeRef.planets.length; i++) {
         const p = universeRef.planets[i];
         const m = planetMarkers[i];
         const c = planetBodyCircles[i];
-        if (p) {
-            if (c) c.setLatLng([p.pos.y, p.pos.x]);
-            if (m) m.setLatLng([p.pos.y, p.pos.x]);
+        const position = [p.pos.y, p.pos.x];
+        c.setLatLng(position);
+        m.setLatLng(position);
+        const explored = p.explored;
+        const planetSurveyChanged = planetSurveyStates[i] !== explored;
+        if (planetSurveyChanged) {
+            planetSurveyStates[i] = explored;
+            surveyChanged = true;
+            c.setStyle({ color: planetBorderColor(explored) });
+            m.setTooltipContent(planetTooltip(p));
+        }
+        if (m.isPopupOpen()) {
+            const popup = m.getPopup().getElement();
+            if (planetSurveyChanged) {
+                const tag = popup.querySelector('[data-field="survey"]');
+                tag.textContent = planetSurveyLabel(p);
+                tag.classList.toggle('tag-surveyed', explored);
+                tag.classList.toggle('tag-unexplored', !explored);
+            }
+            const field = popup.querySelector('[data-field="position"]');
+            const coords = formatPosition(p.pos);
+            if (field.textContent !== coords) field.textContent = coords;
         }
     }
+    if (surveyChanged) updatePlanetSelector();
 
     // 2. Move spacecraft marker and update orientation
     const ship = universeRef.ship;
@@ -780,15 +838,18 @@ export function updateMapPositions() {
                 rot.style.transform = `rotate(${shipDeg}deg)`;
             }
         }
+        if (shipMarker.isPopupOpen()) {
+            const telemetry = getShipTelemetry(ship);
+            const popup = shipMarker.getPopup().getElement();
+            for (const field of popup.querySelectorAll('[data-field]')) {
+                const value = telemetry[field.dataset.field];
+                if (field.textContent !== value) field.textContent = value;
+            }
+        }
     }
 
     // 3. Update flight trail if new positions were recorded
-    if (trackPolyline && universeRef.track && universeRef.track.length > 1) {
-        if (universeRef.track.length !== lastTrackLen) {
-            lastTrackLen = universeRef.track.length;
-            trackPolyline.setLatLngs(universeRef.track.map(v => [v.y, v.x]));
-        }
-    }
+    updateFlightTrack(ship.track.positions);
 
     // 4. Auto-tracking spacecraft with dynamic zoom
     if (isTrackingShip && ship && map && map._loaded) {

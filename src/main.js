@@ -105,7 +105,6 @@ window.universe = universe;
 const autopilot = new Autopilot(universe.ship, universe);
 universe.ship.autopilot = autopilot;
 universe.add(autopilot);
-autopilot.enabled = false;
 
 // ── Initialize Universe Map ──────────────────────────────────────────────────
 initUniverseMap(universe, () => resumeGame());
@@ -154,7 +153,8 @@ canvas.addEventListener('pointermove', (e) => {
 canvas.addEventListener('pointerup',     releaseStick);
 canvas.addEventListener('pointercancel', releaseStick);
 
-function releaseStick(e) {
+function releaseStick() {
+    if (!stickActive) return;
     stickActive = false;
     stickOrigin  = Vec2.Zero;
     stickCurrent = Vec2.Zero;
@@ -162,8 +162,6 @@ function releaseStick(e) {
 }
 
 function applyStick(delta) {
-    if (autopilot.enabled) return;
-
     const ship = universe.follow;
     if (!ship) return;
 
@@ -263,10 +261,10 @@ export function restartGame() {
     universe.ship.launchClock = universe.now;
 
     // 3. Clear trajectory track
-    universe.track.length = 0;
+    universe.ship.track.clear();
 
     // 4. Reset autopilot & camera
-    autopilot.enabled = false;
+    autopilot.reset();
     dynamicZoom = false;
     cameraZoom = DEFAULT_CAMERA_ZOOM;
     updateAutoBtnStyle();

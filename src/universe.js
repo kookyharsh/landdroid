@@ -89,6 +89,12 @@ export function hsvToRgb(h, s, v) {
 }
 
 // ── Planet ───────────────────────────────────────────────────────────────────
+function bodyMass(radius, density) {
+    // Kotlin evaluates 4 / 3 as an integer before multiplying by the Float values.
+    const volume = Math.fround(Math.fround(PIf) * Math.fround(radius ** 3));
+    return Math.fround(volume * density);
+}
+
 // Port of Planet class in Universe.kt
 export class Planet extends Body {
     constructor(orbitCenter, radius, pos, speed, color = '#FFFFFF') {
@@ -99,8 +105,7 @@ export class Planet extends Body {
         this.speed       = speed;
         this.color       = color;
         this.orbitRadius = pos.distance(orbitCenter);
-        // mass = 4/3 * PI * r^3 * density
-        this.mass = (4 / 3) * PIf * Math.pow(radius, 3) * PLANETARY_DENSITY;
+        this.mass = bodyMass(radius, PLANETARY_DENSITY);
 
         this.atmosphere  = '';
         this.description = '';
@@ -133,7 +138,7 @@ export class Star extends Planet {
         this.cls     = cls;
         this.pos     = Vec2.Zero;
         // override mass with stellar density
-        this.mass    = (4 / 3) * PIf * Math.pow(radius, 3) * STELLAR_DENSITY;
+        this.mass    = bodyMass(radius, STELLAR_DENSITY);
         this.color   = starColor(cls);
         this.collides = false;
         this.anim    = 0;
@@ -161,6 +166,11 @@ export class Track {
         }
         this.positions.push(new Vec2(x, y));
         this.angles.push(a);
+    }
+
+    clear() {
+        this.positions.length = 0;
+        this.angles.length = 0;
     }
 }
 
@@ -255,13 +265,7 @@ export class Landing {
         if (this.ship !== null) {
             const landingVector = Vec2.makeWithAngleMag(this.angle, this.ship.radius + this.planet.radius);
             const desiredPos    = this.planet.pos.plus(landingVector);
-            const dist = this.ship.pos.distance(desiredPos);
-            if (dist < 1.5) {
-                this.ship.pos = desiredPos;
-                this.ship.velocity = this.planet.velocity;
-            } else {
-                this.ship.pos = this.ship.pos.times(0.5).plus(desiredPos.times(0.5));
-            }
+            this.ship.pos = this.ship.pos.times(0.5).plus(desiredPos.times(0.5));
             this.ship.angle = this.angle;
         }
         this.fuse.update(dt);

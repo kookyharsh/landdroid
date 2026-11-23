@@ -1,0 +1,540 @@
+*, *::before, *::after {
+    margin: 0; padding: 0; box-sizing: border-box;
+}
+
+html, body {
+    width: 100%; height: 100%;
+    background: #16161D;
+    overflow: hidden;
+    font-family: 'SF Mono', 'Roboto Mono', 'Cascadia Code', 'Consolas', 'Menlo', monospace;
+    color: #B7B7FF;
+}
+
+canvas#gameCanvas {
+    display: block;
+    position: fixed;
+    top: 0; left: 0;
+    touch-action: none;  /* prevent scroll/zoom on touch */
+    z-index: 10;
+}
+
+/* ── HUD overlay ────────────────────────────────────────── */
+#hud {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 50;
+}
+
+/* Top-left: star catalog + explored planets */
+#catalog {
+    position: absolute;
+    top: 6px; left: 6px;
+    color: #B7B7FF;
+    font-size: 12px;
+    line-height: 14px;
+    letter-spacing: 1px;
+    white-space: pre;
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    scrollbar-width: none;
+}
+#catalog::-webkit-scrollbar {
+    display: none;
+}
+
+/* Bottom HUD container */
+#hud-bottom {
+    position: absolute;
+    bottom: 6px;
+    left: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    pointer-events: none;
+}
+
+@media (min-aspect-ratio: 1/1) {
+    #hud-bottom {
+        left: auto;
+        right: 6px;
+        align-items: flex-end;
+    }
+}
+
+/* Autopilot status */
+#autopilot-status {
+    color: #4285F4;
+    font-size: 12px;
+    line-height: 14px;
+    letter-spacing: 1px;
+    white-space: pre;
+}
+
+/* Telemetry row: text + control buttons side-by-side */
+#telemetry-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+#telemetry {
+    color: #B7B7FF;
+    font-size: 12px;
+    line-height: 14px;
+    letter-spacing: 1px;
+    white-space: pre;
+}
+
+.hud-actions {
+    display: flex;
+    gap: 6px;
+    pointer-events: auto;
+}
+
+/* Flat Minimalist Console Button (matches original #autoBtn) */
+.hud-btn, .modal-btn, .return-btn, .fit-btn, .track-btn, .popup-btn {
+    background: transparent;
+    border: 1px solid #B7B7FF;
+    color: #B7B7FF;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 12px;
+    letter-spacing: 1px;
+    padding: 6px 10px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 0;
+    outline: none;
+    text-decoration: none;
+}
+
+.hud-btn:hover, .modal-btn:hover, .return-btn:hover, .fit-btn:hover, .track-btn:hover, .popup-btn:hover {
+    background: rgba(183, 183, 255, 0.15);
+    color: #FFFFFF;
+    border-color: #FFFFFF;
+}
+
+.hud-btn.active {
+    background: #4285F4;
+    color: #FFFFFF;
+    border-color: #4285F4;
+}
+
+.track-btn.active {
+    border-color: #34A853;
+    color: #34A853;
+    background: rgba(52, 168, 83, 0.15);
+}
+
+.track-btn.active:hover {
+    border-color: #34A853;
+    color: #FFFFFF;
+    background: rgba(52, 168, 83, 0.28);
+}
+
+#map-floating-actions {
+    position: absolute;
+    bottom: 24px;
+    right: 24px;
+    z-index: 800;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.map-fab-btn {
+    background: #16161D;
+    border: 1px solid #B7B7FF;
+    color: #B7B7FF;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: 0;
+    outline: none;
+    transition: all 0.15s ease;
+}
+
+.map-fab-btn:hover {
+    border-color: #FFFFFF;
+    color: #FFFFFF;
+    background: rgba(183, 183, 255, 0.15);
+}
+
+.map-fab-btn.active {
+    border-color: #34A853;
+    color: #34A853;
+    background: rgba(52, 168, 83, 0.15);
+}
+
+.map-fab-btn.active:hover {
+    border-color: #34A853;
+    color: #FFFFFF;
+    background: rgba(52, 168, 83, 0.28);
+}
+
+.return-cockpit-fab {
+    background: #16161D;
+    border: 1px solid #B7B7FF;
+    color: #B7B7FF;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 10px 14px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 0;
+    outline: none;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.return-cockpit-fab:hover {
+    border-color: #FFFFFF;
+    color: #FFFFFF;
+    background: rgba(183, 183, 255, 0.15);
+}
+
+.hud-btn svg, .modal-btn svg, .return-btn svg, .fit-btn svg, .track-btn svg, .map-fab-btn svg, .return-cockpit-fab svg, .popup-btn svg {
+    display: block;
+    flex-shrink: 0;
+}
+
+.hud-hint {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: rgba(183, 183, 255, 0.6);
+    margin-top: 2px;
+}
+
+/* ── Pause Modal Overlay ────────────────────────────────── */
+#pause-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(22, 22, 29, 0.85);
+    z-index: 500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+#pause-modal.visible {
+    display: flex;
+}
+
+.modal-card {
+    background: #16161D;
+    border: 1px solid #B7B7FF;
+    padding: 24px 32px;
+    min-width: 320px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    text-align: center;
+}
+
+.modal-title {
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: #B7B7FF;
+    font-weight: bold;
+}
+
+.modal-meta {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: #B7B7FF;
+    border-top: 1px solid rgba(183, 183, 255, 0.2);
+    border-bottom: 1px solid rgba(183, 183, 255, 0.2);
+    padding: 10px 0;
+    line-height: 1.6;
+    text-align: left;
+}
+
+.modal-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.modal-btn {
+    padding: 10px 16px;
+    justify-content: center;
+    text-transform: uppercase;
+}
+
+/* ── Fullscreen Leaflet Universe Map View ────────────────── */
+#map-view {
+    position: fixed;
+    inset: 0;
+    z-index: 400;
+    background: #16161D;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+#map-view.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#map-header {
+    height: 44px;
+    background: #16161D;
+    border-bottom: 1px solid #B7B7FF;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    gap: 10px;
+    z-index: 1000;
+}
+
+.header-section {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#map-title-display {
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: #B7B7FF;
+}
+
+#map-coords-readout {
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: #B7B7FF;
+    border-left: 1px solid #B7B7FF;
+    padding-left: 8px;
+}
+
+.map-select {
+    background: #16161D;
+    border: 1px solid #B7B7FF;
+    color: #B7B7FF;
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 5px 8px;
+    cursor: pointer;
+    outline: none;
+    border-radius: 0;
+}
+.map-select:focus {
+    border-color: #FFFFFF;
+    color: #FFFFFF;
+}
+
+#leaflet-map {
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    background: #16161D;
+}
+
+/* ── Leaflet Custom Map Marker Styles (Flat Terminal) ────── */
+.star-map-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.star-label {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, var(--star-label-offset, 24px));
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #B7B7FF;
+    background: #16161D;
+    padding: 1px 5px;
+    white-space: nowrap;
+    pointer-events: none;
+    border: 1px solid rgba(183, 183, 255, 0.4);
+}
+
+.planet-map-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.planet-label {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translate(-50%, var(--planet-label-offset, 16px));
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #B7B7FF;
+    background: #16161D;
+    padding: 1px 5px;
+    white-space: nowrap;
+    pointer-events: none;
+    border: 1px solid rgba(183, 183, 255, 0.4);
+}
+
+.ship-map-icon {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ship-marker-wrapper {
+    position: relative;
+    width: 24px; height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #FFFFFF;
+}
+
+.ship-rotator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ship-marker-wrapper svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* ── Flat Terminal Popups ─────────────────────────────────── */
+.leaflet-popup-content-wrapper {
+    background: #16161D !important;
+    border: 1px solid #B7B7FF !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: #B7B7FF !important;
+    padding: 0 !important;
+}
+
+.leaflet-popup-tip {
+    background: #16161D !important;
+    border-left: 1px solid #B7B7FF !important;
+    border-top: 1px solid #B7B7FF !important;
+    box-shadow: none !important;
+}
+
+.leaflet-popup-content {
+    margin: 0 !important;
+    min-width: 250px;
+}
+
+.celestial-popup {
+    padding: 12px 14px;
+    font-family: inherit;
+}
+
+.popup-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid rgba(183, 183, 255, 0.2);
+    padding-bottom: 6px;
+}
+
+.popup-tag {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: #B7B7FF;
+}
+.popup-tag.tag-surveyed { color: #00FF66; }
+.popup-tag.tag-unexplored { color: #B7B7FF; opacity: 0.7; }
+.popup-tag.tag-ship { color: #4285F4; }
+
+.popup-title {
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #FFFFFF;
+}
+
+.popup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 10px;
+    font-size: 10px;
+    margin-bottom: 10px;
+}
+
+.grid-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.grid-item.full {
+    grid-column: span 2;
+}
+
+.grid-item .k {
+    color: #B7B7FF;
+    opacity: 0.7;
+    letter-spacing: 0.5px;
+}
+
+.grid-item .v {
+    color: #FFFFFF;
+}
+
+.popup-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.popup-btn {
+    flex: 1;
+    padding: 5px 8px;
+    font-size: 10px;
+}
+
+.celestial-tooltip, .ship-tooltip {
+    background: #16161D !important;
+    border: 1px solid #B7B7FF !important;
+    color: #B7B7FF !important;
+    font-family: inherit !important;
+    font-size: 11px !important;
+    letter-spacing: 1px !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+}
+
+/* ── Loading screen ─────────────────────────────────────── */
+#loading {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #B7B7FF;
+    font-size: 14px;
+    line-height: 1.5;
+    letter-spacing: 2px;
+    text-align: center;
+    pointer-events: none;
+    z-index: 9999;
+}
