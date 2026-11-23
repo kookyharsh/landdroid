@@ -1,0 +1,57 @@
+name: Publish Landdroid to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out vanilla game
+        uses: actions/checkout@v6
+        with:
+          path: vanilla
+          persist-credentials: false
+
+      - name: Check out map game
+        uses: actions/checkout@v6
+        with:
+          ref: universe-map
+          path: map-game
+          persist-credentials: false
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site/map
+          cp vanilla/index.html vanilla/styles.css _site/
+          cp -R vanilla/src _site/
+          cp map-game/index.html map-game/styles.css _site/map/
+          cp -R map-game/src map-game/assets _site/map/
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
