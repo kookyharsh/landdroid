@@ -352,6 +352,9 @@ canvas#gameCanvas {
     background: #16161D;
 }
 
+.leaflet-orbit-pane { z-index: 390; pointer-events: none; }
+.leaflet-track-pane { z-index: 410; pointer-events: none; }
+
 /* ── Leaflet Custom Map Marker Styles (Flat Terminal) ────── */
 .star-map-icon {
     display: flex;
@@ -395,6 +398,10 @@ canvas#gameCanvas {
     white-space: nowrap;
     pointer-events: none;
     border: 1px solid rgba(183, 183, 255, 0.4);
+}
+
+.leaflet-zoom-anim :is(.planet-label, .star-label) {
+    transition: transform 250ms cubic-bezier(0, 0, 0.25, 1);
 }
 
 .ship-map-icon {

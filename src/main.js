@@ -25,6 +25,7 @@ import {
     showUniverseMap,
     hideUniverseMap,
     fitEntireUniverse,
+    clearMapFlightTrack,
     updateMapPositions
 } from './universe-map.js';
 
@@ -262,6 +263,7 @@ export function restartGame() {
 
     // 3. Clear trajectory track
     universe.ship.track.clear();
+    clearMapFlightTrack();
 
     // 4. Reset autopilot & camera
     autopilot.reset();
@@ -437,7 +439,7 @@ function frame(timestamp) {
 
     // Update live orbital marker positions on the Leaflet map in real time
     if (currentState === GameState.MAP) {
-        updateMapPositions();
+        updateMapPositions(timestamp);
     }
 
     // Only render canvas and update HUD if not completely covered by Map View
