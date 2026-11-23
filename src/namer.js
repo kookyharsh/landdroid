@@ -78,12 +78,12 @@ const CONSTELLATIONS_RARE = [
 const STAR_SUFFIXES = [
     "Alpha","Beta","Gamma","Delta","Epsilon","Zeta","Eta","Theta","Iota","Kappa","Lambda","Mu",
     "Nu","Xi","Omicron","Pi","Rho","Sigma","Tau","Upsilon","Phi","Chi","Psi","Omega",
-    "Prime","Segundo","Major","Minor","Diminished","Augmented","Ultima","Penultima","Mid",
+    "Prime","Secundo","Major","Minor","Diminished","Augmented","Ultima","Penultima","Mid",
     "Proxima","Novis","Plus"
 ];
 
 const STAR_SUFFIXES_RARE = [
-    "Serif","Sans","Oblique","Grotesque","Handtooled","III \"Trey\"","Alfredo","2.0",
+    "Serif","Sans","Oblique","Grotesque","Handtooled","III “Trey”","Alfredo","2.0",
     "(Final)","(Final (Final))","(Draft)","Con Carne"
 ];
 
@@ -110,9 +110,9 @@ const ACTIVITIES = [
 // --------------- Namer (ports Namer.kt) ---------------
 
 const SUFFIX_PROB  = 0.75;
-const LETTER_PROB  = 0.30;
-const NUMBER_PROB  = 0.30;
-const RARE_PROB    = 0.05;
+const LETTER_PROB  = Math.fround(0.30);
+const NUMBER_PROB  = Math.fround(0.30);
+const RARE_PROB    = Math.fround(0.05);
 
 export class Namer {
     constructor() {

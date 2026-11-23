@@ -32,6 +32,10 @@ export class Autopilot {
         this.LAUNCH_THRUST_TIME = 5;
         this.STRATEGY_MIN_TIME  = 0.5;
 
+        this.reset();
+    }
+
+    reset() {
         this.enabled          = false;
         this.target           = null;
         this.landingAltitude  = 0;

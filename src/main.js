@@ -82,7 +82,6 @@ window.universe = universe;
 const autopilot = new Autopilot(universe.ship, universe);
 universe.ship.autopilot = autopilot;
 universe.add(autopilot);
-autopilot.enabled = false;
 
 // ── Camera state ──────────────────────────────────────────────────────────────
 let cameraZoom   = DEFAULT_CAMERA_ZOOM;
@@ -128,7 +127,8 @@ canvas.addEventListener('pointermove', (e) => {
 canvas.addEventListener('pointerup',     releaseStick);
 canvas.addEventListener('pointercancel', releaseStick);
 
-function releaseStick(e) {
+function releaseStick() {
+    if (!stickActive) return;
     stickActive = false;
     stickOrigin  = Vec2.Zero;
     stickCurrent = Vec2.Zero;
@@ -137,8 +137,6 @@ function releaseStick(e) {
 
 function applyStick(delta) {
     // Mirrors FlightStick.onStickChanged in MainActivity.kt
-    if (autopilot.enabled) return;  // autopilot owns the controls
-
     const ship = universe.follow;
     if (!ship) return;
 

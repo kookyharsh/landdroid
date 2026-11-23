@@ -62,8 +62,10 @@ export class XorWowRandom {
     }
 
     nextIntRange(from, until) {
+        if (from >= until) throw new RangeError('Random range must be non-empty');
+
         const n = (until - from) | 0;
-        if (n > 0) {
+        if (n > 0 || n === -2_147_483_648) {
             if ((n & -n) === n) {
                 // power of two
                 const bitCount = 31 - Math.clz32(n);
@@ -74,15 +76,23 @@ export class XorWowRandom {
                 do {
                     bits = this.nextInt() >>> 1;
                     v = bits % n;
-                } while ((bits - v + (n - 1)) < 0);
+                } while (((bits - v + (n - 1)) | 0) < 0);
                 return (from + v) | 0;
             }
         }
-        return from;
+
+        // Wider ranges cross the signed 32-bit limit for the range size.
+        let value;
+        do {
+            value = this.nextInt();
+        } while (value < from || value >= until);
+        return value;
     }
 
     nextFloatInRange(from, until) {
-        return from + (until - from) * this.nextFloat();
+        const start = Math.fround(from);
+        const span = Math.fround(Math.fround(until) - start);
+        return Math.fround(start + Math.fround(span * this.nextFloat()));
     }
 
     choose(array) {
@@ -123,14 +133,14 @@ export class Bag {
  */
 export class RandomTable {
     constructor(...pairs) {
-        this.pairs = pairs;
-        this.total = pairs.reduce((sum, pair) => sum + pair[0], 0);
+        this.pairs = pairs.map(([weight, result]) => [Math.fround(weight), result]);
+        this.total = this.pairs.reduce((sum, [weight]) => Math.fround(sum + weight), 0);
     }
 
     roll(rng) {
         let x = rng.nextFloatInRange(0, this.total);
         for (const [weight, result] of this.pairs) {
-            x -= weight;
+            x = Math.fround(x - weight);
             if (x < 0) return result;
         }
         return this.pairs[this.pairs.length - 1][1];

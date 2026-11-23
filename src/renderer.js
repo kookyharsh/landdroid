@@ -29,7 +29,7 @@ import {
 export const DRAW_ORBITS_FLAG              = true;
 export const DRAW_GRAVITATIONAL_FIELDS_FLAG = true;
 export const DRAW_STAR_GRAVITATIONAL_FIELDS_FLAG = true;
-export const STAR_POINTS = 31; // Build.VERSION.SDK_INT → 31 for web
+export const STAR_POINTS = 37; // Android 17 SDK level
 
 // Colors (Colors.kt)
 const Colors = {
@@ -136,7 +136,7 @@ export function drawUniverse(ctx, universe, zoom, visibleRect = null) {
         drawAutopilot(ctx, universe.ship.autopilot, universe, zoom);
     }
 
-    // 5. Spacecraft (track then ship)
+    // 5. Spacecraft and track
     drawSpacecraft(ctx, universe.ship, zoom);
 }
 
@@ -290,9 +290,6 @@ export function drawStar(ctx, star, now, zoom, visibleRect = null) {
 // ── drawSpacecraft ────────────────────────────────────────────────────────────
 // VisibleUniverse.kt: drawSpacecraft()
 export function drawSpacecraft(ctx, ship, zoom) {
-    // Draw track first (in world space, no ship rotation)
-    drawTrack(ctx, ship.track, zoom);
-
     // Draw ship body (rotated around ship.pos)
     ctx.save();
     ctx.translate(ship.pos.x, ship.pos.y);
@@ -306,7 +303,7 @@ export function drawSpacecraft(ctx, ship, zoom) {
     }
 
     // Ship body fill (fauxpaque background)
-    ctx.fillStyle = ship.transit ? '#000000' : '#16161D';
+    ctx.fillStyle = Colors.Eigengrau;
     ctx.fill(spaceshipPath);
 
     // Ship body outline
@@ -323,24 +320,22 @@ export function drawSpacecraft(ctx, ship, zoom) {
     }
 
     ctx.restore();
+    drawTrack(ctx, ship.track, zoom);
 }
 
 // ── drawLanding ───────────────────────────────────────────────────────────────
 // VisibleUniverse.kt: drawLanding()
-// flagFlag() is always true on web (feature flag always enabled)
+// The web build enables landing flags.
 export function drawLanding(ctx, landing, zoom) {
-    // Plant flag beside the lander along the planet surface (offset ~25px)
-    const angleOffset = Math.min(0.2, 25 / landing.planet.radius);
-    const flagAngle   = landing.angle + angleOffset;
     const v = landing.planet.pos.plus(
-        Vec2.makeWithAngleMag(flagAngle, landing.planet.radius)
+        Vec2.makeWithAngleMag(landing.angle, landing.planet.radius)
     );
     const strokeWidth = 2 / zoom;
     const height      = 80;
 
     ctx.save();
     ctx.translate(v.x, v.y);
-    ctx.rotate(flagAngle);
+    ctx.rotate(landing.angle);
 
     // Flag shape from VisibleUniverse.kt
     const flagPath = new Path2D();
